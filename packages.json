@@ -1,0 +1,17 @@
+{
+  "_comment": "Dev tools on every machine (`spinup.py packages`). check = command(s) that prove it's installed; then the first installer that fits the OS: winget (Windows), brew (macOS), apt (Debian/Ubuntu), script (sh), npm. NixOS gets a list for configuration.nix instead. Order matters: node before npm packages.",
+  "tools": [
+    {"name": "git", "check": ["git"], "winget": "Git.Git", "brew": "git", "apt": "git", "nix": "git"},
+    {"name": "gh", "check": ["gh"], "winget": "GitHub.cli", "brew": "gh", "apt": "gh", "nix": "gh"},
+    {"name": "ripgrep", "check": ["rg"], "winget": "BurntSushi.ripgrep.MSVC", "brew": "ripgrep", "apt": "ripgrep", "nix": "ripgrep"},
+    {"name": "fd", "check": ["fd", "fdfind"], "winget": "sharkdp.fd", "brew": "fd", "apt": "fd-find", "nix": "fd"},
+    {"name": "jq", "check": ["jq"], "winget": "jqlang.jq", "brew": "jq", "apt": "jq", "nix": "jq"},
+    {"name": "node", "check": ["node", "npx"], "winget": "OpenJS.NodeJS.LTS", "brew": "node", "apt": "nodejs npm", "nix": "nodejs"},
+    {"name": "bun", "check": ["bun"], "winget": "Oven-sh.Bun", "brew": "oven-sh/bun/bun", "script": "curl -fsSL https://bun.sh/install | bash", "nix": "bun"},
+    {"name": "go", "check": ["go"], "winget": "GoLang.Go", "brew": "go", "apt": "golang-go", "nix": "go"},
+    {"name": "uv", "check": ["uv"], "winget": "astral-sh.uv", "brew": "uv", "script": "curl -LsSf https://astral.sh/uv/install.sh | sh", "nix": "uv"},
+    {"name": "rust", "check": ["cargo"], "winget": "Rustlang.Rustup", "brew": "rustup", "script": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y", "nix": "rustup"},
+    {"name": "claude", "check": ["claude"], "powershell": "irm https://claude.ai/install.ps1 | iex", "script": "curl -fsSL https://claude.ai/install.sh | bash", "nix": "claude-code"},
+    {"name": "codex", "check": ["codex"], "npm": "@openai/codex", "nix": "codex"}
+  ]
+}

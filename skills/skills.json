@@ -1,0 +1,23 @@
+{
+  "_comment": "Global skills for Claude Code + Codex on every machine (`spinup.py skills`). Keep this list small: every auto-triggered skill's description costs tokens in every session. Stack-specific skills go per repo, see skills/README.md.",
+  "agents": ["claude-code", "codex"],
+  "sources": {
+    "mattpocock/skills": [
+      "code-review", "codebase-design", "diagnosing-bugs", "domain-modeling",
+      "grilling", "grill-with-docs", "handoff", "implement",
+      "improve-codebase-architecture", "pr", "prototype", "research",
+      "setup-matt-pocock-skills", "tdd", "to-spec", "to-tickets",
+      "wayfinder", "writing-for-agents"
+    ],
+    "vercel-labs/agent-skills": [
+      "vercel-react-best-practices", "vercel-composition-patterns", "web-design-guidelines"
+    ],
+    "anthropics/skills": ["frontend-design"],
+    "shadcn/ui": ["shadcn"],
+    "better-auth/skills": ["better-auth-best-practices"],
+    "vercel/turborepo": ["turborepo"],
+    "Effect-TS/skills": ["effect-ts"],
+    "JuliusBrussee/caveman": ["caveman", "caveman-commit"],
+    "obra/superpowers": ["verification-before-completion"]
+  }
+}

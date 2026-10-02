@@ -1,0 +1,49 @@
+# CLIProxyAPI config, rendered by spinup.py. Edit this template in the repo, then re-run
+# `python spinup.py hub` — don't edit the rendered config.yaml (it is overwritten).
+# Full option list: config.example.yaml next to the installed binary.
+config-version: 8
+
+server:
+  host: ""            # all interfaces; Windows firewall limits the port to Tailscale (100.64.0.0/10)
+  port: {{PORT}}
+
+management:
+  allow-remote: true  # dashboard reachable from other Tailscale devices (still needs the password)
+  secret-key: "{{SECRET_KEY}}"
+
+access:
+  api-keys:
+    - "{{API_KEY}}"
+
+routing:
+  # Use one account until it hits its limit, then the next (instead of spreading evenly).
+  strategy: "fill-first"
+  # Keep a whole Claude Code session (and its subagents) on one account, so the
+  # prompt cache is reused and limits drain less. Fails over automatically.
+  session-affinity: true
+  session-affinity-ttl: "1h"
+  retry:
+    request-retry: 3
+    max-retry-interval: 30
+  cooldown:
+    # Remember which accounts are rate-limited across restarts.
+    save-cooldown-status: true
+
+requests:
+  streaming:
+    keepalive-seconds: 15  # keeps long thinking streams alive over Tailscale/Wi-Fi
+    bootstrap-retries: 1   # retry once if the upstream fails before the first byte
+
+oauth:
+  auth-dir: "~/.cli-proxy-api"
+
+observability:
+  logs:
+    logging-to-file: true       # runs hidden at boot, so log to files (logs/ next to the binary)
+    logs-max-total-size-mb: 200
+    request-log: false          # don't store prompts/responses on disk
+  usage:
+    usage-statistics-enabled: true  # usage numbers in the dashboard
+
+plugins:
+  enabled: false  # plugins run as trusted native code; enable deliberately

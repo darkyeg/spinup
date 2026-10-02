@@ -1,0 +1,41 @@
+{
+  "_comment": "Stack-specific skills, installed into a repo (not globally) by `spinup.py repo <path> --apply`. A rule fires when any `files` glob matches, or a package.json depends on any `packages`, and (if set) a matched file contains any `contains` string. Sources: docs/research/skills.md.",
+  "rules": [
+    {
+      "stack": "Go",
+      "files": ["go.mod"],
+      "skills": {"samber/cc-skills-golang": ["golang-error-handling", "golang-testing", "golang-lint"]}
+    },
+    {
+      "stack": "Go gRPC / Connect",
+      "files": ["go.mod"],
+      "contains": ["google.golang.org/grpc", "connectrpc.com/connect"],
+      "skills": {"samber/cc-skills-golang": ["golang-grpc"]}
+    },
+    {
+      "stack": "Next.js",
+      "packages": ["next"],
+      "note": "Next ships its own agent docs: on Next < 16.3 run `npx @next/codemod@canary agents-md` once; 16.3+ writes AGENTS.md on `next dev`."
+    },
+    {
+      "stack": "Effect",
+      "packages": ["effect"],
+      "note": "Point AGENTS.md at node_modules/effect/AGENTS.md (the global effect-ts skill does this)."
+    },
+    {
+      "stack": "Flutter",
+      "files": ["pubspec.yaml"],
+      "skills": {"flutter/skills": ["flutter-apply-architecture-best-practices", "flutter-add-widget-test"]}
+    },
+    {
+      "stack": ".NET",
+      "files": ["*.csproj", "*.sln", "*.slnx"],
+      "skills": {"Aaronontheweb/dotnet-skills": ["csharp-api-design"]}
+    },
+    {
+      "stack": "Rust",
+      "files": ["Cargo.toml"],
+      "note": "No skill worth adding; describe the build/test workflow (e.g. ./x) in AGENTS.md."
+    }
+  ]
+}

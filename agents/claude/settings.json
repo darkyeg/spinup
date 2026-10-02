@@ -1,0 +1,12 @@
+{
+  "_comment": "Merged into ~/.claude/settings.json by `spinup.py agents` (objects merge, other values replace; keys not listed here are kept). See docs/WHY.md for why.",
+  "modelSettings": {
+    "claude-opus-5-5": { "effortLevel": "medium" },
+    "claude-sonnet-5-5": { "effortLevel": "medium" }
+  },
+  "outputStyle": "Concise",
+  "promptSuggestionEnabled": false,
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"
+  }
+}
