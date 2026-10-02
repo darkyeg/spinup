@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"text/template"
 
 	"github.com/darkyeg/spinup/internal/atomicfile"
@@ -19,7 +21,8 @@ var unitTemplate string
 const (
 	unitName = "spinup.service"
 	// The always-on proxy of earlier spinup versions would hold the port.
-	legacyUnit = "cliproxyapi.service"
+	legacyUnit     = "cliproxyapi.service"
+	legacyUnitPath = "/etc/systemd/system/" + legacyUnit
 )
 
 // registerAutostart installs a systemd user unit; lingering keeps it running without a login on machines that can hold.
@@ -27,11 +30,8 @@ func registerAutostart(exe string, cfg config.Config) error {
 	if err := writeUnit(exe); err != nil {
 		return err
 	}
-	if systemctlSays("is-enabled", legacyUnit) || systemctlSays("is-active", legacyUnit) {
-		step("Turning off the old always-on proxy (%s)", legacyUnit)
-		if err := runAsRoot("systemctl", "disable", "--now", legacyUnit); err != nil {
-			return err
-		}
+	if err := removeLegacyUnit(); err != nil {
+		return err
 	}
 	if cfg.Hold.CanHold() && exec.Command("loginctl", "enable-linger").Run() != nil {
 		if err := runAsRoot("loginctl", "enable-linger", currentUser()); err != nil {
@@ -44,6 +44,28 @@ func registerAutostart(exe string, cfg config.Config) error {
 		}
 	}
 	return nil
+}
+
+// removeLegacyUnit turns off and deletes the old proxy unit. One the NixOS configuration declares can only go from there.
+func removeLegacyUnit() error {
+	if target, err := filepath.EvalSymlinks(legacyUnitPath); err == nil && strings.HasPrefix(target, "/nix/store/") {
+		return errors.New("your NixOS configuration still declares the old proxy (systemd.services.cliproxyapi): " +
+			"remove it, run `sudo nixos-rebuild switch`, then run setup again")
+	}
+	if systemctlSays("is-enabled", legacyUnit) || systemctlSays("is-active", legacyUnit) {
+		step("Turning off the old always-on proxy (%s)", legacyUnit)
+		if err := runAsRoot("systemctl", "disable", "--now", legacyUnit); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Lstat(legacyUnitPath); err != nil {
+		return nil
+	}
+	step("Removing the old proxy unit (%s)", legacyUnitPath)
+	if err := runAsRoot("rm", legacyUnitPath); err != nil {
+		return err
+	}
+	return runAsRoot("systemctl", "daemon-reload")
 }
 
 func unregisterAutostart(config.Config) error {

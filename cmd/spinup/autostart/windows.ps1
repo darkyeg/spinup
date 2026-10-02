@@ -26,7 +26,7 @@ try {
         # An always-on proxy from an earlier setup would hold the port.
         Stop-Task 'CLIProxyAPI'
         if (Get-ScheduledTask -TaskName 'CLIProxyAPI' -ErrorAction SilentlyContinue) {
-            Disable-ScheduledTask -TaskName 'CLIProxyAPI' | Out-Null
+            Unregister-ScheduledTask -TaskName 'CLIProxyAPI' -Confirm:$false
         }
         Remove-Rule 'CLIProxyAPI (Tailscale only)'
 
