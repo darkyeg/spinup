@@ -1,27 +1,24 @@
 package service
 
 import (
-	"slices"
 	"time"
 
 	"github.com/darkyeg/spinup/internal/api"
 	"github.com/darkyeg/spinup/internal/logins"
 )
 
-// Report describes this machine now.
+// Report describes this machine.
 func (m *Machine) Report() api.Report {
-	m.mu.Lock()
+	now := time.Now()
+	st := m.ledger.view(now)
+	waiting, leaderAddr := m.notes.get()
 	r := api.Report{
-		Name: m.self.Name, Hold: m.cfg.Hold, Version: m.o.Version, Leading: m.leading,
-		LeaderAddr: m.leaderAddr, Waiting: m.waiting, Peers: slices.Clone(m.peers.list),
+		Name: m.tail.selfName(), Hold: m.cfg.Hold, Version: m.o.Version, Leading: st.Leading, Starting: st.Starting,
+		LeaderAddr: leaderAddr, Waiting: waiting, Peers: m.peers.peers(), Synced: m.replica.synced(now),
 	}
 	if m.cfg.Hold.CanHold() {
-		r.Epoch, r.Leader = m.state.Epoch, m.state.Leader
+		r.Epoch, r.Leader = st.Epoch, st.Leader
 	}
-	if !m.replica.at.IsZero() {
-		r.Synced = &api.Sync{Epoch: m.replica.epoch, SecondsAgo: int(time.Since(m.replica.at).Seconds())}
-	}
-	m.mu.Unlock()
 	if m.o.Proxy != nil {
 		r.ProxyRunning = m.o.Proxy.Running()
 	}

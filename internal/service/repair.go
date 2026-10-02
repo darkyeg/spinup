@@ -3,18 +3,15 @@ package service
 import (
 	"context"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/darkyeg/spinup/internal/proxy"
 )
 
-// repair runs every 30 seconds on the leader: when the provider refused a login's token, it takes
-// a newer copy from another machine if one has it, and otherwise says which account to log in again.
+// repair takes a newer copy of a refused login from another machine, or says which account to log in again.
 func (m *Machine) repair(ctx context.Context) {
-	m.mu.Lock()
-	now := due(&m.timers.repair, 30*time.Second)
-	m.mu.Unlock()
-	if !now {
+	if !m.repairs.due() {
 		return
 	}
 	refused := m.refusedLogins(ctx)
@@ -23,10 +20,7 @@ func (m *Machine) repair(ctx context.Context) {
 	}
 	replaced := m.takeNewerLogins(ctx)
 	for _, name := range refused {
-		m.mu.Lock()
-		reported := m.refused[name]
-		m.refused[name] = true
-		m.mu.Unlock()
+		reported := m.repairs.reported(name)
 		switch {
 		case slices.Contains(replaced, name):
 			m.log.Printf("login %s was refused; took a newer copy from another machine", name)
@@ -48,4 +42,31 @@ func (m *Machine) refusedLogins(ctx context.Context) []string {
 		}
 	}
 	return refused
+}
+
+const repairEvery = 30 * time.Second
+
+// repairs paces the repair look and remembers which refused logins were already reported.
+type repairs struct {
+	mu   sync.Mutex
+	pace pace
+	seen map[string]bool
+}
+
+func (r *repairs) due() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.pace.due(repairEvery)
+}
+
+// reported says whether name was reported before, and counts it as reported now.
+func (r *repairs) reported(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.seen == nil {
+		r.seen = map[string]bool{}
+	}
+	was := r.seen[name]
+	r.seen[name] = true
+	return was
 }

@@ -7,6 +7,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/darkyeg/spinup/internal/api"
 )
@@ -28,7 +29,7 @@ func (m *Machine) newForwarder(transport http.RoundTripper) *httputil.ReversePro
 			pr.SetURL(t.url)
 			pr.Out.Header.Del(api.ForwardedHeader)
 			if t.toPeer {
-				pr.Out.Header.Set(api.ForwardedHeader, m.selfName())
+				pr.Out.Header.Set(api.ForwardedHeader, m.tail.selfName())
 			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -40,12 +41,10 @@ func (m *Machine) newForwarder(transport http.RoundTripper) *httputil.ReversePro
 
 // forward sends everything that isn't spinup's own (the API, the dashboard) to whoever holds the accounts.
 func (m *Machine) forward(w http.ResponseWriter, r *http.Request) {
-	m.mu.Lock()
-	leading, leaderAddr := m.leading, m.leaderAddr
-	m.mu.Unlock()
+	_, leaderAddr := m.notes.get()
 	var t forwardTarget
 	switch {
-	case leading:
+	case m.ledger.view(time.Now()).Leading:
 		t.url = &url.URL{Scheme: "http", Host: net.JoinHostPort("127.0.0.1", strconv.Itoa(m.cfg.ProxyPort))}
 	case r.Header.Get(api.ForwardedHeader) != "":
 		writeError(w, http.StatusServiceUnavailable, "this machine doesn't hold the accounts any more; retry")

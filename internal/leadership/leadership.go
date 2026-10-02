@@ -23,10 +23,11 @@ const (
 	Silent                    // online per Tailscale, but its service doesn't answer
 	Standing                  // answers, with a copy of the logins that may be behind
 	Synced                    // answers, with the leader's current logins
+	Starting                  // answers, and is starting its proxy to hold the accounts
 	Leading                   // answers, and holds the accounts
 )
 
-var peerStateNames = [...]string{"offline", "silent", "standing", "synced", "leading"}
+var peerStateNames = [...]string{"offline", "silent", "standing", "synced", "starting", "leading"}
 
 func (s PeerState) String() string { return peerStateNames[s] }
 
@@ -43,6 +44,8 @@ func (s *PeerState) UnmarshalText(text []byte) error {
 }
 
 func (s PeerState) answers() bool { return s >= Standing }
+
+func (s PeerState) claims() bool { return s >= Starting }
 
 type Peer struct {
 	Name  string      `json:"name"`
@@ -67,6 +70,14 @@ type View struct {
 	AutoFailback  bool
 	// Forced: the user ran `spinup takeover` because the leader is lost for good.
 	Forced bool
+	// Pending is set while a hand-off from this machine has an unknown outcome.
+	Pending *PendingHandOff
+}
+
+// PendingHandOff: this machine sent the accounts to KnownLeader and never learned whether it took them.
+type PendingHandOff struct {
+	// Age is the time since the request ended; Window is how long a late request can still land.
+	Age, Window time.Duration
 }
 
 type Kind int
@@ -152,8 +163,7 @@ func decideAsLeader(v View, claim *Peer) Decision {
 	return Decision{Kind: Stay}
 }
 
-// resume: this machine led last. Logins another machine refreshed since would send an outdated
-// refresh token, which providers may answer by revoking the account's newer tokens too.
+// resume: this machine led last, and logins refreshed elsewhere since would make it send an outdated refresh token.
 func resume(v View, next int64) Decision {
 	for _, p := range v.Peers {
 		if p.MayHaveLed {
@@ -168,7 +178,11 @@ func replaceLeader(v View, next int64) Decision {
 	if i < 0 {
 		return wait("leader " + v.KnownLeader + " isn't known among the machines that can hold; waiting to see it")
 	}
-	switch p := v.Peers[i]; {
+	p := v.Peers[i]
+	if v.Pending != nil && p.State.answers() && p.Epoch < v.Epoch {
+		return afterUnknownHandOff(v, p, next)
+	}
+	switch {
 	case p.State != Offline:
 		return wait("leader " + p.Name + " is online but doesn't hold the accounts")
 	case p.OfflineFor < v.FailoverAfter:
@@ -179,6 +193,14 @@ func replaceLeader(v View, next int64) Decision {
 		return wait("the leader is gone; " + best + " takes over")
 	}
 	return Decision{Kind: Lead, Epoch: next, Reason: "leader " + v.KnownLeader + " is offline"}
+}
+
+// afterUnknownHandOff waits out the window in which a late hand-off request could still land.
+func afterUnknownHandOff(v View, target Peer, next int64) Decision {
+	if v.Pending.Age < v.Pending.Window {
+		return wait("not yet sure that " + target.Name + " didn't take the accounts")
+	}
+	return Decision{Kind: Lead, Epoch: next, Reason: target.Name + " never took the accounts"}
 }
 
 // bestCandidate prefers the hub, then the first name, among this machine and answering peers.
@@ -203,7 +225,7 @@ func strongestClaim(peers []Peer) *Peer {
 	var claim *Peer
 	for i := range peers {
 		p := &peers[i]
-		if p.State == Leading && (claim == nil || outranks(p.Epoch, p.Name, claim.Epoch, claim.Name)) {
+		if p.State.claims() && (claim == nil || outranks(p.Epoch, p.Name, claim.Epoch, claim.Name)) {
 			claim = p
 		}
 	}

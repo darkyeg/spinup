@@ -12,7 +12,7 @@ import (
 	"github.com/darkyeg/spinup/internal/config"
 )
 
-func Render(template, host string, port int, authDir string, s config.Secrets) string {
+func render(template, host string, port int, authDir string, s config.Secrets) string {
 	return strings.NewReplacer(
 		"{{HOST}}", host,
 		"{{AUTH_DIR}}", filepath.ToSlash(authDir), // YAML needs no escapes for forward slashes
@@ -24,6 +24,6 @@ func Render(template, host string, port int, authDir string, s config.Secrets) s
 
 // WriteConfig keeps CLIProxyAPI on 127.0.0.1: spinup is the only way in.
 func WriteConfig(c config.Config, s config.Secrets) error {
-	text := Render(spinup.ProxyConfigTemplate, "127.0.0.1", c.ProxyPort, c.AuthDir, s)
+	text := render(spinup.ProxyConfigTemplate, "127.0.0.1", c.ProxyPort, c.AuthDir, s)
 	return atomicfile.Write(c.ProxyConfig(), []byte(text), 0o600)
 }

@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"text/template"
 
@@ -18,8 +20,21 @@ var (
 	ccpUnix string
 )
 
+var launcherSafe = regexp.MustCompile(`^[A-Za-z0-9._~+/=-]+$`)
+
+// checkLauncherKey refuses keys with characters that could break out of the launcher script.
+func checkLauncherKey(key string) error {
+	if !launcherSafe.MatchString(key) {
+		return errors.New("the API key may only have letters, digits and . _ ~ + / = -")
+	}
+	return nil
+}
+
 // writeLauncher writes `ccp`: Claude Code through the accounts, via this machine's localhost.
 func writeLauncher(port int, apiKey string) error {
+	if err := checkLauncherKey(apiKey); err != nil {
+		return err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err

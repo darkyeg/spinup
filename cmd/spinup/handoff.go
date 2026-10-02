@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type handoffCmd struct {
 	Machine string `arg:"" help:"The hub or standby that takes the accounts."`
@@ -16,10 +19,11 @@ func (c handoffCmd) Run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Moving the accounts to %s...\n", c.Machine)
-	if err := service.handOff(c.Machine); err != nil {
+	target := strings.ToLower(c.Machine)
+	fmt.Printf("Moving the accounts to %s...\n", target)
+	if err := service.handOff(target); err != nil {
 		return err
 	}
-	fmt.Printf("%s holds the accounts.\n", c.Machine)
+	fmt.Printf("%s holds the accounts.\n", target)
 	return nil
 }

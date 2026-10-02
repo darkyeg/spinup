@@ -69,8 +69,8 @@ func Find() string {
 	return ""
 }
 
-// ErrNoTailscale means the CLI isn't installed.
-var ErrNoTailscale = errors.New("tailscale CLI not found")
+// errNoTailscale means the CLI isn't installed.
+var errNoTailscale = errors.New("tailscale CLI not found")
 
 type rawNode struct {
 	HostName     string
@@ -88,7 +88,7 @@ func (c CLI) Status(ctx context.Context) (Status, error) {
 		bin = Find()
 	}
 	if bin == "" {
-		return Status{}, ErrNoTailscale
+		return Status{}, errNoTailscale
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -98,11 +98,11 @@ func (c CLI) Status(ctx context.Context) (Status, error) {
 	if err != nil && len(out) == 0 {
 		return Status{}, err
 	}
-	return Parse(out)
+	return parse(out)
 }
 
-// Parse decodes `tailscale status --json`.
-func Parse(data []byte) (Status, error) {
+// parse decodes `tailscale status --json`.
+func parse(data []byte) (Status, error) {
 	var raw struct {
 		BackendState string
 		Self         rawNode
@@ -122,7 +122,7 @@ func Parse(data []byte) (Status, error) {
 }
 
 func convert(r rawNode) Node {
-	n := Node{Name: ShortName(r.DNSName, r.HostName), OS: r.OS, Online: r.Online}
+	n := Node{Name: shortName(r.DNSName, r.HostName), OS: r.OS, Online: r.Online}
 	if r.LastSeen.Year() > 1 {
 		n.LastSeen = r.LastSeen
 	}
@@ -135,9 +135,8 @@ func convert(r rawNode) Node {
 	return n
 }
 
-// ShortName is the MagicDNS short name ("office-pc" from "office-pc.tail1234.ts.net."), which is
-// what people type; it falls back to the OS hostname.
-func ShortName(dnsName, hostName string) string {
+// shortName is the MagicDNS short name ("office-pc"), or the OS hostname's.
+func shortName(dnsName, hostName string) string {
 	name := dnsName
 	if name == "" {
 		name = hostName

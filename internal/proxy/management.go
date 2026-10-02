@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// Healthy reports whether a CLIProxyAPI answers at base.
-func Healthy(ctx context.Context, base string) bool {
+// healthy reports whether a CLIProxyAPI answers at base.
+func healthy(ctx context.Context, base string) bool {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/", nil)

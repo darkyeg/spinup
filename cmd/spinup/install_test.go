@@ -1,0 +1,69 @@
+package main
+
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/darkyeg/spinup/internal/config"
+	"github.com/darkyeg/spinup/internal/tailnet"
+)
+
+func TestInstallHold(t *testing.T) {
+	cases := []struct {
+		name string
+		cmd  installCmd
+		want config.Hold
+	}{
+		{"no flag keeps the machine's hold", installCmd{}, ""},
+		{"hub", installCmd{Hub: true}, config.HoldHub},
+		{"standby", installCmd{Standby: true}, config.HoldStandby},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.cmd.hold(); got != c.want {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestHoldPhrase(t *testing.T) {
+	cases := map[config.Hold]string{
+		config.HoldHub:     "hub",
+		config.HoldStandby: "standby",
+		config.HoldNever:   "uses the accounts",
+		"":                 "uses the accounts",
+	}
+	for hold, want := range cases {
+		if got := holdPhrase(hold); !strings.Contains(got, want) {
+			t.Errorf("holdPhrase(%q) = %q, want it to mention %q", hold, got, want)
+		}
+	}
+}
+
+func TestTailscaleProblem(t *testing.T) {
+	cases := []struct {
+		name     string
+		ts       tailnet.Status
+		err      error
+		wantText string
+	}{
+		{"fine", tailnet.Status{Running: true}, nil, ""},
+		{"the CLI failed", tailnet.Status{}, errors.New("exec: not found"), "exec: not found"},
+		{"installed but stopped", tailnet.Status{}, nil, "not running"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := tailscaleProblem(c.ts, c.err)
+			switch {
+			case c.wantText == "" && err != nil:
+				t.Errorf("unexpected %v", err)
+			case c.wantText != "" && (err == nil || !strings.Contains(err.Error(), c.wantText)):
+				t.Errorf("got %v, want it to contain %q", err, c.wantText)
+			case err != nil && strings.Contains(err.Error(), "<nil>"):
+				t.Errorf("the message prints a nil error: %v", err)
+			}
+		})
+	}
+}

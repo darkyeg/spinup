@@ -17,7 +17,7 @@ var plistTemplate string
 
 const (
 	agentLabel = "dev.spinup.daemon"
-	// The always-on proxy of spinup.py would hold the port; spinup runs the proxy from now on.
+	// spinup.py's always-on proxy would hold the port.
 	legacyDaemon      = "/Library/LaunchDaemons/com.spinup.cliproxyapi.plist"
 	legacyDaemonLabel = "system/com.spinup.cliproxyapi"
 )

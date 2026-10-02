@@ -11,6 +11,11 @@ import (
 	"github.com/darkyeg/spinup/internal/sysproc"
 )
 
+const (
+	quietBound = 5 * time.Second
+	exitBound  = 10 * time.Second
+)
+
 // Runner keeps CLIProxyAPI running while it is wanted, restarting it if it crashes.
 type Runner struct {
 	Exe, Dir, Config string
@@ -34,8 +39,7 @@ func (r *Runner) Start(ctx context.Context) error {
 	return r.waitHealthy(ctx)
 }
 
-// Stop lets a refresh in progress reach the disk first: it waits until quiet reports no login
-// changing, for at most five seconds, then stops the process and waits for it to exit.
+// Stop waits up to quietBound for quiet (nil skips the wait), kills the process, and waits up to exitBound for it to exit.
 func (r *Runner) Stop(quiet func() bool) {
 	r.mu.Lock()
 	r.wanted = false
@@ -44,14 +48,14 @@ func (r *Runner) Stop(quiet func() bool) {
 	if cmd == nil {
 		return
 	}
-	for i := 0; i < 10 && quiet != nil && !quiet(); i++ {
+	for deadline := time.Now().Add(quietBound); quiet != nil && !quiet() && time.Now().Before(deadline); {
 		time.Sleep(500 * time.Millisecond)
 	}
 	_ = cmd.Process.Kill()
 	select {
 	case <-exited:
 		r.Log.Printf("proxy: stopped CLIProxyAPI")
-	case <-time.After(10 * time.Second):
+	case <-time.After(exitBound):
 		r.Log.Printf("proxy: CLIProxyAPI did not exit after kill")
 	}
 }
@@ -69,22 +73,23 @@ func (r *Runner) spawn() error {
 		return nil
 	}
 	// A proxy already answering is one spinup doesn't control, still refreshing tokens: never start a second.
-	if Healthy(context.Background(), r.base()) {
+	if healthy(context.Background(), r.base()) {
 		return fmt.Errorf("a CLIProxyAPI that spinup didn't start answers on port %d; stop it first", r.Port)
 	}
 	cmd := exec.Command(r.Exe, "-config", r.Config)
 	cmd.Dir = r.Dir
-	if err := sysproc.StartBound(cmd); err != nil {
+	wait, err := sysproc.StartBound(cmd)
+	if err != nil {
 		return fmt.Errorf("start CLIProxyAPI: %w", err)
 	}
 	r.cmd, r.exited = cmd, make(chan struct{})
 	r.Log.Printf("proxy: started CLIProxyAPI (pid %d)", cmd.Process.Pid)
-	go r.restartOnExit(cmd, r.exited)
+	go r.restartOnExit(wait, r.exited)
 	return nil
 }
 
-func (r *Runner) restartOnExit(cmd *exec.Cmd, exited chan struct{}) {
-	err := cmd.Wait()
+func (r *Runner) restartOnExit(wait func() error, exited chan struct{}) {
+	err := wait()
 	close(exited)
 	r.mu.Lock()
 	r.cmd = nil
@@ -105,7 +110,7 @@ func (r *Runner) base() string { return fmt.Sprintf("http://127.0.0.1:%d", r.Por
 func (r *Runner) waitHealthy(ctx context.Context) error {
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		if Healthy(ctx, r.base()) {
+		if healthy(ctx, r.base()) {
 			return nil
 		}
 		select {

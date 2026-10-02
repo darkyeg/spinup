@@ -21,7 +21,7 @@ import (
 // Proxy is the local CLIProxyAPI; *proxy.Runner is the real one.
 type Proxy interface {
 	Start(ctx context.Context) error
-	// Stop waits for quiet (no login being written) before stopping, within a bound; nil skips the wait.
+	// Stop waits a bounded time for quiet (no login being written) before stopping; nil skips the wait.
 	Stop(quiet func() bool)
 	Running() bool
 }
@@ -44,45 +44,24 @@ type Options struct {
 	Tick        time.Duration
 }
 
-// Machine is this machine running spinup.
+// Machine is this machine running spinup: it wires the units that each own one part of its state.
 type Machine struct {
 	o          Options
 	cfg        config.Config
 	log        *log.Logger
 	httpClient *http.Client
 	forwarder  *httputil.ReverseProxy
+	stopRun    context.CancelFunc
 
 	transition sync.Mutex // one leadership change at a time
 
-	mu        sync.Mutex
-	self      tailnet.Node
-	tailnet   tailnet.Status
-	state     persisted
-	bootAlive time.Time // state.LastAlive when the service started or woke
-	leading   bool
-	forced    bool
-	waiting   string
-	// cutOffSince is when this machine lost Tailscale; zero while connected.
-	cutOffSince time.Time
-	// leaderAddr is the peer API of whoever holds the accounts; empty when unknown.
-	leaderAddr string
-	peers      peerView
-	replica    replica
-	timers     timers
-	refused    map[string]bool // logins already reported as refused
-}
-
-type timers struct {
-	discover, repair, save time.Time
-}
-
-// due reports whether every has passed since *last, and if so restarts the wait. Needs m.mu held.
-func due(last *time.Time, every time.Duration) bool {
-	if time.Since(*last) < every {
-		return false
-	}
-	*last = time.Now()
-	return true
+	ledger  *ledger
+	peers   *peerView
+	tail    tailView
+	replica replica
+	fence   fence
+	notes   outlook
+	repairs repairs
 }
 
 func New(o Options) *Machine {
@@ -112,8 +91,9 @@ func New(o Options) *Machine {
 		log: o.Log,
 		// Every call also carries its own, shorter deadline.
 		httpClient: &http.Client{Transport: transport, Timeout: 3 * time.Minute},
+		ledger:     newLedger(o.StatePath),
 		peers:      newPeerView(),
-		refused:    map[string]bool{},
+		stopRun:    func() {},
 	}
 	m.forwarder = m.newForwarder(transport)
 	return m
@@ -121,13 +101,11 @@ func New(o Options) *Machine {
 
 // Run serves until ctx ends, then hands the accounts to another machine if this one holds them.
 func (m *Machine) Run(ctx context.Context) error {
-	st, err := loadState(m.o.StatePath)
-	if err != nil {
+	if err := m.ledger.load(); err != nil {
 		return fmt.Errorf("state: %w", err)
 	}
-	m.mu.Lock()
-	m.state, m.bootAlive = st, st.LastAlive
-	m.mu.Unlock()
+	ctx, m.stopRun = context.WithCancel(ctx)
+	defer m.stopRun()
 
 	front, err := net.Listen("tcp", m.o.FrontListen)
 	if err != nil {
@@ -158,9 +136,7 @@ func (m *Machine) Run(ctx context.Context) error {
 func (m *Machine) tick(ctx context.Context) {
 	ts, err := m.o.Tailnet.Status(ctx)
 	if err == nil && ts.Self.Name != "" {
-		m.mu.Lock()
-		m.self, m.tailnet = ts.Self, ts
-		m.mu.Unlock()
+		m.tail.set(ts)
 	}
 	if !m.cfg.Hold.CanHold() {
 		m.findLeader(ctx, ts)
@@ -174,13 +150,19 @@ func (m *Machine) tick(ctx context.Context) {
 		m.fenceIfCutOff("this machine is not connected to Tailscale")
 		return
 	}
-	m.connected()
+	m.fence.connected()
 	m.act(ctx, leadership.Decide(m.observe(ctx, ts)), ts)
-	m.markAlive()
+	if m.ledger.touch(time.Now()) {
+		m.save()
+	}
 }
 
 func (m *Machine) act(ctx context.Context, d leadership.Decision, ts tailnet.Status) {
-	m.noteWaiting(d)
+	if d.Kind == leadership.Wait {
+		m.waitFor(d.Reason)
+	} else {
+		m.waitFor("")
+	}
 	switch d.Kind {
 	case leadership.Lead:
 		m.log.Printf("decision: %v", d)
@@ -198,34 +180,20 @@ func (m *Machine) act(ctx context.Context, d leadership.Decision, ts tailnet.Sta
 			m.log.Printf("hand-off to %s failed: %v", d.Target, err)
 		}
 	}
-	if m.isLeading() {
+	if m.ledger.view(time.Now()).Leading {
 		m.pushIfChanged(ctx)
 		m.repair(ctx)
 	}
 }
 
-func (m *Machine) noteWaiting(d leadership.Decision) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	reason := ""
-	if d.Kind == leadership.Wait {
-		reason = d.Reason
-		m.leaderAddr = ""
-	}
-	if reason != "" && reason != m.waiting {
+func (m *Machine) waitFor(reason string) {
+	if m.notes.note(reason) {
 		m.log.Printf("waiting: %s", reason)
 	}
-	m.waiting = reason
 }
 
-func (m *Machine) isLeading() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.leading
-}
-
-func (m *Machine) selfName() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.self.Name
+func (m *Machine) save() {
+	if err := m.ledger.save(); err != nil {
+		m.log.Printf("save state: %v", err)
+	}
 }

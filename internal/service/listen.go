@@ -57,12 +57,11 @@ func (m *Machine) peerListenAddr() string {
 	if m.o.PeerListen != "" {
 		return m.o.PeerListen
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.self.IP == "" {
+	ip := m.tail.self().IP
+	if ip == "" {
 		return ""
 	}
-	return net.JoinHostPort(m.self.IP, strconv.Itoa(m.cfg.Port))
+	return net.JoinHostPort(ip, strconv.Itoa(m.cfg.Port))
 }
 
 func sleep(ctx context.Context, d time.Duration) {

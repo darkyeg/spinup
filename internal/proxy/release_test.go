@@ -10,7 +10,7 @@ import (
 )
 
 func TestRenderFillsEveryPlaceholder(t *testing.T) {
-	out := Render(spinup.ProxyConfigTemplate, "127.0.0.1", 8327, filepath.FromSlash("/home/me/.cli-proxy-api"),
+	out := render(spinup.ProxyConfigTemplate, "127.0.0.1", 8327, filepath.FromSlash("/home/me/.cli-proxy-api"),
 		config.Secrets{APIKey: "k", ManagementPassword: "m"})
 	if strings.Contains(out, "{{") {
 		t.Fatalf("unfilled placeholder in:\n%s", out)

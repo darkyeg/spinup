@@ -26,6 +26,16 @@ func (c Client) Get(ctx context.Context, url string, out any) error {
 	return c.do(ctx, http.MethodGet, url, nil, out)
 }
 
+// AskLeader asks the machine called name, at base, who holds the accounts and which of s it proves; use a Client without a Key.
+func (c Client) AskLeader(ctx context.Context, base, name string, s config.Secrets) (Leader, Proof, error) {
+	nonce := newNonce()
+	var l Leader
+	if err := c.Get(ctx, base+PathLeader+"?"+NonceParam+"="+nonce, &l); err != nil {
+		return l, Unproven, err
+	}
+	return l, l.proofFor(s, name, nonce), nil
+}
+
 func (c Client) Post(ctx context.Context, url string, in, out any) error {
 	return c.do(ctx, http.MethodPost, url, in, out)
 }
@@ -63,10 +73,7 @@ func (c Client) do(ctx context.Context, method, url string, in, out any) error {
 
 // Refused is a definite answer from the other side: the request arrived and was turned down.
 // Any other error leaves open whether it took effect.
-type Refused struct {
-	Status  int
-	Message string
-}
+type Refused struct{ Message string }
 
 func (r *Refused) Error() string { return r.Message }
 
@@ -74,9 +81,9 @@ func failure(resp *http.Response) error {
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	var e Error
 	if json.Unmarshal(data, &e) == nil && e.Error.Message != "" {
-		return &Refused{Status: resp.StatusCode, Message: e.Error.Message}
+		return &Refused{Message: e.Error.Message}
 	}
-	return &Refused{Status: resp.StatusCode, Message: fmt.Sprintf("%s: %s", resp.Status, bytes.TrimSpace(data))}
+	return &Refused{Message: fmt.Sprintf("%s: %s", resp.Status, bytes.TrimSpace(data))}
 }
 
 // WasRefused reports whether err is a definite refusal rather than an unknown outcome.

@@ -12,6 +12,8 @@ import (
 	"github.com/darkyeg/spinup/internal/config"
 )
 
+const stopWithin = time.Minute
+
 // local is this machine's spinup service, reached on localhost.
 type local struct {
 	base   string
@@ -25,8 +27,7 @@ func localService(cfg config.Config, key string) local {
 	}
 }
 
-// keyedLocalService is for commands that change who holds the accounts: only a machine that can
-// hold them has the key.
+// keyedLocalService is for commands that change who holds the accounts: only a machine that can hold has the key.
 func keyedLocalService() (local, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -58,6 +59,19 @@ func (l local) handOff(to string) error {
 
 func (l local) takeOver() error {
 	return l.call(10*time.Second, http.MethodPost, api.PathTakeover, struct{}{}, nil)
+}
+
+// stop asks the service to hand the accounts on if it holds them and exit, then waits for it to be gone.
+func (l local) stop() error {
+	if err := l.call(10*time.Second, http.MethodPost, api.PathStop, struct{}{}, nil); err != nil {
+		return err
+	}
+	for deadline := time.Now().Add(stopWithin); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		if _, err := l.leader(); err != nil {
+			return nil
+		}
+	}
+	return errors.New("the service is still running")
 }
 
 func (l local) call(timeout time.Duration, method, path string, in, out any) error {

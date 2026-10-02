@@ -16,26 +16,26 @@ func Hide(cmd *exec.Cmd) {
 }
 
 // StartBound starts cmd inside a job object that Windows closes, killing cmd, when spinup exits.
-func StartBound(cmd *exec.Cmd) error {
+func StartBound(cmd *exec.Cmd) (wait func() error, err error) {
 	job, err := killOnCloseJob()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	Hide(cmd)
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, err
 	}
 	process, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, uint32(cmd.Process.Pid))
 	if err != nil {
 		_ = cmd.Process.Kill()
-		return err
+		return nil, err
 	}
 	defer windows.CloseHandle(process)
 	if err := windows.AssignProcessToJobObject(job, process); err != nil {
 		_ = cmd.Process.Kill()
-		return err
+		return nil, err
 	}
-	return nil
+	return cmd.Wait, nil
 }
 
 // killOnCloseJob stays open for spinup's lifetime; only the process exit closes it.

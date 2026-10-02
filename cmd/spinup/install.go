@@ -16,8 +16,8 @@ import (
 type installCmd struct {
 	Hub      bool   `xor:"hold" help:"This machine normally holds the accounts. One hub per tailnet."`
 	Standby  bool   `xor:"hold" help:"This machine takes the accounts while the hub is off."`
-	Password string `placeholder:"PASSWORD" help:"The dashboard password, for --standby (asked when omitted; on the hub: spinup.py show-key)."`
-	APIKey   string `name:"api-key" placeholder:"KEY" help:"The API key, for a machine that only uses the accounts (asked when omitted)."`
+	Password string `env:"SPINUP_PASSWORD" placeholder:"PASSWORD" help:"The dashboard password, for --standby (or $SPINUP_PASSWORD; asked when omitted; on the hub: spinup.py show-key)."`
+	APIKey   string `name:"api-key" env:"SPINUP_API_KEY" placeholder:"KEY" help:"The API key, for a machine that only uses the accounts (or $SPINUP_API_KEY; asked when omitted)."`
 }
 
 func (c installCmd) Help() string {
@@ -37,13 +37,16 @@ func (c installCmd) Run() error {
 		cfg.Tailscale = tailnet.Find()
 	}
 	ts, err := tailnet.CLI{Bin: cfg.Tailscale}.Status(context.Background())
-	if err != nil || !ts.Running {
-		return fmt.Errorf("Tailscale isn't running on this machine (%v): install it and log in first", err)
+	if err := tailscaleProblem(ts, err); err != nil {
+		return err
 	}
 	step("This machine is %s on your tailnet; it %s", ts.Self.Name, holdPhrase(cfg.Hold))
 
 	apiKey, err := c.keys(cfg, ts)
 	if err != nil {
+		return err
+	}
+	if err := checkLauncherKey(apiKey); err != nil {
 		return err
 	}
 	if err := ensureProxy(cfg); err != nil {
@@ -56,6 +59,7 @@ func (c installCmd) Run() error {
 	if err != nil {
 		return err
 	}
+	stopService()
 	step("Starting spinup at boot")
 	if err := registerAutostart(exe, cfg); err != nil {
 		return err
@@ -78,6 +82,16 @@ func (c installCmd) hold() config.Hold {
 		return config.HoldStandby
 	}
 	return ""
+}
+
+func tailscaleProblem(ts tailnet.Status, err error) error {
+	switch {
+	case err != nil:
+		return fmt.Errorf("can't read Tailscale's status (%w): install it and log in first", err)
+	case !ts.Running:
+		return errors.New("Tailscale is installed but not running: start it and log in first")
+	}
+	return nil
 }
 
 func holdPhrase(h config.Hold) string {

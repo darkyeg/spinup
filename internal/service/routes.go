@@ -39,8 +39,9 @@ func (m *Machine) routes(a audience) http.Handler {
 	switch a {
 	case onLocalhost:
 		mux.HandleFunc("GET "+api.PathState, m.serveState)
-		// Only the user at this machine may force it to lead.
+		// Only the user at this machine may force it to lead or stop it.
 		mux.HandleFunc("POST "+api.PathTakeover, m.keyed(m.holding(m.serveTakeover)))
+		mux.HandleFunc("POST "+api.PathStop, m.keyed(m.holding(m.serveStop)))
 	case onTailnet:
 		mux.HandleFunc("GET "+api.PathState, m.keyed(m.serveState))
 	}
@@ -76,11 +77,13 @@ func (m *Machine) holding(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (m *Machine) serveLeader(w http.ResponseWriter, _ *http.Request) {
-	m.mu.Lock()
-	l := api.Leader{Name: m.self.Name, Hold: m.cfg.Hold, Leading: m.leading, Leader: m.state.Leader, Epoch: m.state.Epoch}
-	m.mu.Unlock()
-	writeJSON(w, l)
+func (m *Machine) serveLeader(w http.ResponseWriter, r *http.Request) {
+	st := m.ledger.view(time.Now())
+	l := api.Leader{
+		Name: m.tail.selfName(), Hold: m.cfg.Hold, Leading: st.Leading, Starting: st.Starting,
+		Leader: st.Leader, Epoch: st.Epoch,
+	}
+	writeJSON(w, l.Prove(m.o.Secrets, r.URL.Query().Get(api.NonceParam)))
 }
 
 func (m *Machine) serveState(w http.ResponseWriter, _ *http.Request) { writeJSON(w, m.Report()) }
@@ -122,24 +125,21 @@ func (m *Machine) acceptAccounts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, okBody)
 }
 
-// serveHandoff moves the accounts from wherever they are: the leader hands them off itself, any
-// other machine passes the request on to the leader once.
+// serveHandoff hands off if this machine leads, and otherwise passes the request to the leader once.
 func (m *Machine) serveHandoff(w http.ResponseWriter, r *http.Request) {
 	var req api.Handoff
 	if !decode(w, r, commandLimit, &req) {
 		return
 	}
-	m.mu.Lock()
-	leading, leader := m.leading, m.state.Leader
-	m.mu.Unlock()
+	st := m.ledger.view(time.Now())
 	ctx, cancel := context.WithTimeout(r.Context(), handoffTimeout)
 	defer cancel()
 	var err error
 	switch {
-	case leading:
+	case st.Leading:
 		err = m.handOff(ctx, req.To)
-	case leader != "" && r.Header.Get(api.ForwardedHeader) == "":
-		err = m.callPeer(ctx, leader, api.PathHandoff, req, nil)
+	case st.Leader != "" && r.Header.Get(api.ForwardedHeader) == "":
+		err = m.callPeer(ctx, st.Leader, api.PathHandoff, req, nil)
 	default:
 		err = errors.New("no machine holds the accounts right now")
 	}
@@ -151,11 +151,19 @@ func (m *Machine) serveHandoff(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Machine) serveTakeover(w http.ResponseWriter, _ *http.Request) {
-	m.mu.Lock()
-	m.forced = true
-	m.mu.Unlock()
+	if err := m.ledger.takeover(time.Now()); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
 	m.log.Printf("the user asked this machine to take the accounts")
 	writeJSON(w, okBody)
+}
+
+func (m *Machine) serveStop(w http.ResponseWriter, _ *http.Request) {
+	m.log.Printf("the user asked the service to stop")
+	writeJSON(w, okBody)
+	_ = http.NewResponseController(w).Flush()
+	m.stopRun()
 }
 
 var okBody = map[string]bool{"ok": true}

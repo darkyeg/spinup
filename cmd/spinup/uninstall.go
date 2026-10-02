@@ -22,6 +22,7 @@ func (uninstallCmd) Run() error {
 	if cfg.Hold.CanHold() {
 		handOffBeforeLeaving()
 	}
+	stopService()
 	if err := unregisterAutostart(cfg); err != nil {
 		return err
 	}

@@ -17,22 +17,27 @@ const (
 )
 
 const (
-	PathLeader   = "/spinup/leader"   // public
+	PathLeader   = "/spinup/leader"   // public; proves what its machine knows
 	PathState    = "/spinup/state"    // keyed between machines, open on localhost
 	PathLogins   = "/spinup/logins"   // GET the complete set, POST some to merge
 	PathSecrets  = "/spinup/secrets"  // for a new standby
 	PathReceive  = "/spinup/receive"  // the leader hands this machine the accounts
 	PathHandoff  = "/spinup/handoff"  // the user moves the accounts
 	PathTakeover = "/spinup/takeover" // the user makes this machine lead; localhost only
+	PathStop     = "/spinup/stop"     // the user stops this service gracefully; localhost only
 )
 
-// Leader is public: it names who holds the accounts and nothing secret.
+// Leader is public: it names who holds the accounts, with proofs of the secrets its machine knows.
 type Leader struct {
-	Name    string      `json:"name"`
-	Hold    config.Hold `json:"hold"`
-	Leading bool        `json:"leading"`
-	Leader  string      `json:"leader"`
-	Epoch   int64       `json:"epoch"`
+	Name string      `json:"name"`
+	Hold config.Hold `json:"hold"`
+	// Leading and Starting both claim the accounts: Starting is a proxy that is coming up.
+	Leading       bool   `json:"leading"`
+	Starting      bool   `json:"starting,omitempty"`
+	Leader        string `json:"leader"`
+	Epoch         int64  `json:"epoch"`
+	APIKeyProof   string `json:"api_key_proof,omitempty"`
+	PasswordProof string `json:"password_proof,omitempty"`
 }
 
 type Logins struct {
@@ -53,6 +58,7 @@ type Report struct {
 	Hold         config.Hold       `json:"hold"`
 	Version      string            `json:"version"`
 	Leading      bool              `json:"leading"`
+	Starting     bool              `json:"starting,omitempty"`
 	Epoch        int64             `json:"epoch"`
 	Leader       string            `json:"leader"`
 	LeaderAddr   string            `json:"leader_addr,omitempty"`

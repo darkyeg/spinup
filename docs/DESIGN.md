@@ -50,11 +50,11 @@ Claude and Codex logins use **refresh tokens**. Each time a login is refreshed, 
 
 spinup 2 is built around a **single writer**: at any moment, exactly one machine may refresh the logins.
 
-1. **One leader, chosen safely.** Leadership is a lease with a number that goes up on every change. A standby takes over only when **Tailscale's control server** reports the leader as offline for a few minutes. "I can't reach it" is not enough: if your laptop simply has bad Wi-Fi, the leader still shows online, and nothing moves. This prevents two leaders.
+1. **One leader, chosen safely.** Leadership is a lease with a number that goes up on every change. A standby takes over only when **Tailscale's control server** reports the leader as offline for a few minutes. "I can't reach it" is not enough: if your laptop simply has bad Wi-Fi, the leader still shows online, and nothing moves. A machine also publishes its claim (the new number) before it starts its proxy, so others see a proxy that is coming up. This prevents two leaders.
 2. **Standbys never refresh.** They store copies and never use them while another machine leads.
-3. **Sync within seconds.** The leader watches its login folder and pushes every refreshed login to the standbys as soon as it changes.
+3. **Sync within seconds.** The leader checks its logins every few seconds and pushes every refreshed login to the standbys as soon as one changes.
 4. **The newest copy always wins.** Each login carries the time it was last refreshed. An older copy never overwrites a newer one, in either direction.
-5. **Handoffs without risk.** When the leader shuts down normally, or you run `spinup handoff <machine>`, it stops its proxy first, sends its final logins, and only then does the next leader start.
+5. **Handoffs without risk.** When the leader shuts down normally, or you run `spinup handoff <machine>`, it stops its proxy first, sends its final logins, and only then does the next leader start. If the leader never learns whether the target took them, it stays stopped and presumes the target holds them: it follows the target, or leads again only when the target answers without having taken them, or replaces it by the normal rule once Tailscale reports it offline.
 6. **Self-repair.** If a refresh is ever rejected, the leader first asks the other machines for a newer token for that account and uses it, instead of marking the account logged out.
 7. **Coming back.** When the old leader turns on again, it does not start its proxy straight away. It pulls the newest logins from the current leader, then the two do a normal handoff (if you want it back as leader).
 
@@ -64,6 +64,7 @@ spinup 2 is built around a **single writer**: at any moment, exactly one machine
 
 - **Nothing on the internet.** All traffic stays inside your tailnet and is end-to-end encrypted (WireGuard).
 - **Logins are fetched only with a key.** Standbys authenticate to the leader with the proxy's management key; machines that only use the accounts never receive logins at all.
+- **Holders prove themselves first.** `/spinup/leader` answers a random challenge with proofs (HMAC-SHA256, bound to its machine name so a device can't pass on another's) of the secrets it knows. A machine sends the management key only to a device that proves it knows it, and a machine that only uses the accounts sends its traffic (which carries the API key) only to a leader that proves it knows the API key.
 - **Least privilege.** spinup runs as your user, never as SYSTEM or root. On Windows, starting at boot (before anyone logs in) and the Tailscale-only firewall rule need one admin prompt at install time, and never again.
 - **At rest.** The login folder is readable by your user only. Use disk encryption (BitLocker, FileVault, LUKS) on every machine that can hold the accounts.
 - **Never in git.** Logins and keys never touch any repository.
@@ -91,6 +92,6 @@ spinup 2 is built around a **single writer**: at any moment, exactly one machine
 1. **Phase 1 (built):** the service with the `localhost:8317` front, leader election (Tailscale as referee), sync within seconds with newest-wins, safe handoff, self-fencing and sleep detection, self-repair, `install`/`status`/`handoff`/`takeover`/`uninstall`, CI and tagged releases with checksums.
 2. **Phase 2:** move the remaining Python commands into the same binary; self-update with signed releases; CLIProxyAPI updates by the leader. The Python version keeps working until then.
 
-The safety rules are tested in `internal/cluster`: `Decide` is a pure function with a table of cases, and a simulated tailnet runs whole lifecycles (failover, partition, hand-back, planned shutdown) while checking that no two proxies ever run at once.
+The safety rules are tested in `internal/leadership` (`Decide` is a pure function with a table of cases) and `internal/service/machine_test.go`, where a simulated tailnet runs whole lifecycles (failover, partition, hand-back, planned shutdown, a slow target, imposters) while checking that no two proxies ever run at once.
 
 Questions and ideas: open an issue.

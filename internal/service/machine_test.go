@@ -20,6 +20,7 @@ import (
 	"github.com/darkyeg/spinup/internal/api"
 	"github.com/darkyeg/spinup/internal/atomicfile"
 	"github.com/darkyeg/spinup/internal/config"
+	"github.com/darkyeg/spinup/internal/leadership"
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
@@ -81,9 +82,28 @@ type fakeProxy struct {
 	most    *atomic.Int32
 	mu      sync.Mutex
 	srv     *http.Server
+	gate    chan struct{}
 }
 
-func (p *fakeProxy) Start(context.Context) error {
+func (p *fakeProxy) holdStarts() (release func()) {
+	p.mu.Lock()
+	p.gate = make(chan struct{})
+	gate := p.gate
+	p.mu.Unlock()
+	return func() { close(gate) }
+}
+
+func (p *fakeProxy) Start(ctx context.Context) error {
+	p.mu.Lock()
+	gate := p.gate
+	p.mu.Unlock()
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.srv != nil {
@@ -185,9 +205,7 @@ func (tn *testTailnet) start(tm *testMachine) {
 
 // crash stops a machine with no hand-off, like a power cut.
 func (tn *testTailnet) crash(tm *testMachine) {
-	tm.m.mu.Lock()
-	tm.m.leading = false
-	tm.m.mu.Unlock()
+	tm.m.ledger.stopLeading()
 	tm.proxy.Stop(nil)
 	tn.shutDown(tm)
 }
@@ -322,7 +340,7 @@ func TestAHandOffWithNoAnswerLeavesNobodyRunningTwice(t *testing.T) {
 	tn.waitFor("the hub leads", tn.leaderIs("hub"))
 	tn.start(sb)
 	tn.waitFor("the standby is synced", func() bool { return sb.m.Report().Synced != nil })
-	tn.waitFor("the hub sees the standby", func() bool { return len(hub.m.answeringMembers()) == 1 })
+	tn.waitFor("the hub sees the standby", func() bool { return len(hub.m.peers.holders()) == 1 })
 
 	tn.net.setCutOff("sb", true)
 	if err := hub.m.handOff(context.Background(), "sb"); err == nil {
@@ -330,6 +348,9 @@ func TestAHandOffWithNoAnswerLeavesNobodyRunningTwice(t *testing.T) {
 	}
 	if l := tn.leaders(); len(l) != 0 {
 		t.Fatalf("after an unanswered hand-off, leaders %v; the hub must stay stopped", l)
+	}
+	if leader := hub.m.Report().Leader; leader != "sb" {
+		t.Fatalf("after an unanswered hand-off the hub presumes %q holds the accounts, want sb", leader)
 	}
 	tn.net.setCutOff("sb", false)
 	tn.waitFor("one machine leads again", func() bool { return len(tn.leaders()) == 1 })
@@ -341,27 +362,140 @@ func TestAHandOffWithNoAnswerLeavesNobodyRunningTwice(t *testing.T) {
 	}
 }
 
+func TestASlowTargetNeverRunsAlongsideASenderThatGaveUpWaiting(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	sb := tn.add("sb", config.HoldStandby)
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	tn.start(sb)
+	tn.waitFor("the standby is synced", func() bool { return sb.m.Report().Synced != nil })
+	tn.waitFor("the hub sees the standby", func() bool { return len(hub.m.peers.holders()) == 1 })
+
+	release := sb.proxy.holdStarts()
+	ctx, giveUp := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	handedAt := time.Now()
+	_ = hub.m.handOff(ctx, "sb")
+	giveUp()
+	tn.waitFor("the hub sees the standby starting and follows it", func() bool {
+		return hub.m.Report().Leader == "sb" && hubSees(hub, "sb", leadership.Starting)
+	})
+	tn.waitFor("several ticks after the request ended", func() bool { return time.Since(handedAt) > time.Second })
+	if running := tn.running.Load(); running != 0 {
+		t.Fatalf("%d proxies run while the target is still starting; the hub must stay stopped", running)
+	}
+	release()
+	tn.waitFor("the standby holds the accounts", func() bool { return len(tn.leaders()) == 1 })
+
+	tn.shutDown(hub)
+	tn.shutDown(sb)
+	if most := tn.most.Load(); most != 1 {
+		t.Fatalf("%d proxies ran at once; never more than 1", most)
+	}
+}
+
+func hubSees(tm *testMachine, peer string, state leadership.PeerState) bool {
+	for _, p := range tm.m.Report().Peers {
+		if p.Name == peer && p.State == state {
+			return true
+		}
+	}
+	return false
+}
+
 func TestTheKeyNeverGoesToADeviceWithoutSpinup(t *testing.T) {
 	tn := newTestTailnet(t)
-	var leaked atomic.Bool
-	stranger := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get(api.KeyHeader) != "" {
-			leaked.Store(true)
-		}
-		fmt.Fprint(w, "CLI Proxy API Server")
-	}))
+	var leaked, reached atomic.Bool
+	var asked atomic.Int32
+	imposter := func(answer string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get(api.KeyHeader) != "" || r.Header.Get("Authorization") != "" {
+				leaked.Store(true)
+			}
+			if r.URL.Path == api.PathLeader {
+				asked.Add(1)
+			} else {
+				reached.Store(true)
+			}
+			fmt.Fprint(w, answer)
+		}))
+	}
+	stranger := imposter("CLI Proxy API Server")
 	defer stranger.Close()
+	spoofer := imposter(`{"name":"spoof","hold":"hub","leading":true,"epoch":99,"api_key_proof":"00","password_proof":"00"}`)
+	defer spoofer.Close()
 	tn.net.mu.Lock()
 	tn.net.online["phone"], tn.net.peerAPI["phone"] = true, strings.TrimPrefix(stranger.URL, "http://")
+	tn.net.online["spoof"], tn.net.peerAPI["spoof"] = true, strings.TrimPrefix(spoofer.URL, "http://")
 	tn.net.mu.Unlock()
 
 	hub := tn.add("hub", config.HoldHub)
+	laptop := tn.add("laptop", config.HoldNever)
 	tn.start(hub)
 	tn.waitFor("the hub leads", tn.leaderIs("hub"))
-	time.Sleep(500 * time.Millisecond)
+	tn.start(laptop)
+	tn.waitFor("the laptop reaches the hub, not the spoofer", func() bool {
+		return strings.Contains(get(laptop.front, "/v1/models"), "on hub")
+	})
+	tn.shutDown(laptop)
 	tn.shutDown(hub)
+	if _, met := hub.m.ledger.members()["spoof"]; met {
+		t.Error("a device that couldn't prove it knows the password became a member")
+	}
+	if asked.Load() < 4 {
+		t.Fatal("the machines never looked at the imposters")
+	}
 	if leaked.Load() {
-		t.Fatal("the management password went to a device that doesn't run spinup")
+		t.Fatal("a key or API key went to a device that doesn't know the secrets")
+	}
+	if reached.Load() {
+		t.Fatal("traffic was forwarded to a device that doesn't know the API key")
+	}
+}
+
+func TestTakeoverIsRefusedWhileThisMachineLeads(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	if got := post(hub.front, api.PathTakeover, "m"); got != http.StatusConflict {
+		t.Errorf("takeover on the leader: %d, want 409", got)
+	}
+	tn.shutDown(hub)
+}
+
+func TestStoppingOverTheAPIHandsTheAccountsOver(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	sb := tn.add("sb", config.HoldStandby)
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	tn.start(sb)
+	tn.waitFor("the standby is synced", func() bool { return sb.m.Report().Synced != nil })
+	tn.waitFor("the hub sees the standby", func() bool { return len(hub.m.peers.holders()) == 1 })
+
+	if got := post(hub.peerAPI, api.PathStop, "m"); got != http.StatusNotFound {
+		t.Errorf("stop from the tailnet: %d, want 404", got)
+	}
+	if got := post(hub.front, api.PathStop, "wrong"); got != http.StatusUnauthorized {
+		t.Errorf("stop with the wrong key: %d, want 401", got)
+	}
+	if got := post(hub.front, api.PathStop, "m"); got != http.StatusOK {
+		t.Fatalf("stop: %d, want 200", got)
+	}
+	tn.waitFor("the service exits", func() bool {
+		select {
+		case <-hub.done:
+			return true
+		default:
+			return false
+		}
+	})
+	tn.waitFor("the standby holds the accounts", tn.leaderIs("sb"))
+	tn.shutDown(hub)
+	tn.shutDown(sb)
+	if most := tn.most.Load(); most != 1 {
+		t.Fatalf("%d proxies ran at once; never more than 1", most)
 	}
 }
 
@@ -394,6 +528,17 @@ func TestThePeerAPINeedsTheKey(t *testing.T) {
 		t.Error("/spinup/leader must be public")
 	}
 	tn.shutDown(hub)
+}
+
+func post(addr, path, key string) int {
+	req, _ := http.NewRequest(http.MethodPost, "http://"+addr+path, strings.NewReader("{}"))
+	req.Header.Set(api.KeyHeader, key)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return -1
+	}
+	resp.Body.Close()
+	return resp.StatusCode
 }
 
 func freeAddr(t *testing.T) string { return fmt.Sprintf("127.0.0.1:%d", freePort(t)) }

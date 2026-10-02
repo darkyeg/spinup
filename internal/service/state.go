@@ -3,12 +3,10 @@ package service
 import (
 	"encoding/json"
 	"errors"
-	"maps"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/darkyeg/spinup/internal/atomicfile"
 	"github.com/darkyeg/spinup/internal/config"
 )
 
@@ -21,11 +19,18 @@ type persisted struct {
 	LastAlive time.Time `json:"last_alive"`
 	// Members are the other machines that can hold the accounts.
 	Members map[string]member `json:"members"`
+	// HandOff is the last hand-off whose outcome this machine never learned.
+	HandOff *unconfirmedHandOff `json:"unconfirmed_handoff,omitempty"`
 }
 
 type member struct {
 	Hold  config.Hold `json:"hold"`
 	Epoch int64       `json:"epoch"`
+}
+
+type unconfirmedHandOff struct {
+	Target string    `json:"target"`
+	At     time.Time `json:"at"`
 }
 
 func statePath() string { return filepath.Join(config.StateDir(), "state.json") }
@@ -46,27 +51,4 @@ func loadState(path string) (persisted, error) {
 		s.Members = map[string]member{}
 	}
 	return s, nil
-}
-
-func (m *Machine) save() {
-	m.mu.Lock()
-	st := m.state
-	st.Members = maps.Clone(m.state.Members)
-	m.timers.save = time.Now()
-	m.mu.Unlock()
-	data, _ := json.MarshalIndent(st, "", "  ")
-	if err := atomicfile.Write(m.o.StatePath, append(data, '\n'), 0o600); err != nil {
-		m.log.Printf("save state: %v", err)
-	}
-}
-
-// markAlive records the wall-clock time; it reaches the disk every 15 seconds.
-func (m *Machine) markAlive() {
-	m.mu.Lock()
-	m.state.LastAlive = time.Now().Round(0)
-	saveNow := due(&m.timers.save, 15*time.Second)
-	m.mu.Unlock()
-	if saveNow {
-		m.save()
-	}
 }

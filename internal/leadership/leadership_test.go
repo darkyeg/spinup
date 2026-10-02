@@ -45,6 +45,11 @@ func TestDecide(t *testing.T) {
 	noFailback := leading(view("sb", config.HoldStandby, hub(Leading, 1)), 2)
 	noFailback.AutoFailback = false
 
+	sentHub := func(state PeerState, epoch int64, age time.Duration) View {
+		v := knowing(view("sb", config.HoldStandby, hub(state, epoch)), "hub", 3)
+		v.Pending = &PendingHandOff{Age: age, Window: 10 * time.Second}
+		return v
+	}
 	cases := []struct {
 		name string
 		v    View
@@ -77,6 +82,29 @@ func TestDecide(t *testing.T) {
 		{"takeover overrides waiting", forced, Lead},
 		{"a returning hub follows the standby that took over",
 			knowing(view("hub", config.HoldHub, standby(Leading, 2)), "hub", 1), Follow},
+		{"a unanswered hand-off target that answers without the accounts: wait out the window",
+			sentHub(Standing, 2, time.Second), Wait},
+		{"a unanswered hand-off target that never took the accounts: lead again",
+			sentHub(Synced, 2, time.Minute), Lead},
+		{"a hand-off target that is starting its proxy is followed", sentHub(Starting, 3, time.Minute), Follow},
+		{"a hand-off target that leads is followed", sentHub(Leading, 3, time.Minute), Follow},
+		{"a hand-off target that took the epoch but lost its proxy is waited for",
+			sentHub(Standing, 3, time.Minute), Wait},
+		{"a hand-off target online but silent is waited for", sentHub(Silent, 2, time.Minute), Wait},
+		{"a hand-off target offline too briefly is waited for",
+			func() View {
+				v := sentHub(Offline, 2, time.Minute)
+				v.Peers[0].OfflineFor = time.Minute
+				return v
+			}(), Wait},
+		{"a hand-off target offline long enough is replaced",
+			func() View {
+				v := sentHub(Offline, 2, time.Minute)
+				v.Peers[0].OfflineFor = time.Hour
+				return v
+			}(), Lead},
+		{"a leader steps down for a starting machine with a higher epoch",
+			leading(view("hub", config.HoldHub, standby(Starting, 3)), 2), StepDown},
 		{"a leader steps down for a higher epoch",
 			leading(view("hub", config.HoldHub, standby(Leading, 3)), 2), StepDown},
 		{"a leader keeps leading over a lower epoch", noFailback, Stay},
@@ -108,5 +136,15 @@ func TestANewLeaderOutranksEveryEpochSeen(t *testing.T) {
 	gone.Epoch = 7
 	if got := Decide(knowing(view("sb", config.HoldStandby, gone), "hub", 3)); got.Kind != Lead || got.Epoch != 8 {
 		t.Errorf("got %v, want lead with epoch 8", got)
+	}
+}
+
+func TestPeerStateTextRoundTrips(t *testing.T) {
+	for state := Offline; state <= Leading; state++ {
+		text, _ := state.MarshalText()
+		var back PeerState
+		if err := back.UnmarshalText(text); err != nil || back != state {
+			t.Errorf("%v came back as %v (%v)", state, back, err)
+		}
 	}
 }

@@ -18,12 +18,11 @@ var unitTemplate string
 
 const (
 	unitName = "spinup.service"
-	// The always-on proxy of spinup.py would hold the port; spinup runs the proxy from now on.
+	// spinup.py's always-on proxy would hold the port.
 	legacyUnit = "cliproxyapi.service"
 )
 
-// registerAutostart installs a systemd user unit. Lingering keeps it running without a login on
-// machines that can hold the accounts, so they survive a reboot.
+// registerAutostart installs a systemd user unit; lingering keeps it running without a login on machines that can hold.
 func registerAutostart(exe string, cfg config.Config) error {
 	if err := writeUnit(exe); err != nil {
 		return err

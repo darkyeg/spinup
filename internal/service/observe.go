@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"maps"
-	"sort"
 	"time"
 
 	"github.com/darkyeg/spinup/internal/api"
@@ -13,127 +11,52 @@ import (
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
-// syncedWithin: a copy older than this doesn't count as synced.
-const syncedWithin = 2 * time.Minute
-
-// peerView is what this machine saw of the others at the last look.
-type peerView struct {
-	list         []leadership.Peer
-	answered     map[string]api.Report
-	offlineSince map[string]time.Time
-}
-
-func newPeerView() peerView {
-	return peerView{answered: map[string]api.Report{}, offlineSince: map[string]time.Time{}}
-}
-
-// observe asks every known member, and every ten seconds every other online device, then
-// describes them for leadership.Decide.
+// observe asks the members, and now and then every other online device, and describes them for leadership.Decide.
 func (m *Machine) observe(ctx context.Context, ts tailnet.Status) leadership.View {
-	m.mu.Lock()
-	members := maps.Clone(m.state.Members)
-	discover := due(&m.timers.discover, 10*time.Second)
-	m.mu.Unlock()
-
-	known, unknown := map[string]tailnet.Node{}, map[string]tailnet.Node{}
+	members := m.ledger.members()
+	discover := m.peers.discoverDue()
+	candidates := map[string]tailnet.Node{}
 	for _, p := range ts.Peers {
-		_, isMember := members[p.Name]
-		switch {
-		case !p.Online:
-		case isMember:
-			known[p.Name] = p
-		case discover:
-			unknown[p.Name] = p
+		if _, isMember := members[p.Name]; p.Online && (isMember || discover) {
+			candidates[p.Name] = p
 		}
 	}
-	maps.Copy(known, m.holdersAmong(ctx, unknown))
-	answered := m.probe(ctx, known)
+	answered := m.probe(ctx, candidates)
+	m.ledger.recordMembers(asMembers(answered))
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for name, r := range answered {
-		if r.Hold.CanHold() {
-			m.state.Members[name] = member{Hold: r.Hold, Epoch: r.Epoch}
-		}
-	}
-	m.peers.answered = answered
-	m.peers.list = m.describePeers(ts, answered)
-	return leadership.View{
-		Self: ts.Self.Name, Hold: m.cfg.Hold, Leading: m.leading, Epoch: m.state.Epoch,
-		KnownLeader: m.state.Leader, Peers: m.peers.list, FailoverAfter: m.cfg.FailoverAfter(),
-		AutoFailback: m.cfg.AutoFailback, Forced: m.forced,
-	}
-}
-
-// describePeers needs m.mu held.
-func (m *Machine) describePeers(ts tailnet.Status, answered map[string]api.Report) []leadership.Peer {
 	now := time.Now()
-	var peers []leadership.Peer
-	for name, mem := range m.state.Members {
-		if name == ts.Self.Name {
-			continue
-		}
-		p := leadership.Peer{Name: name, Hold: mem.Hold, Epoch: mem.Epoch}
-		node, inTailnet := ts.Peer(name)
-		switch r, ok := answered[name]; {
-		case ok:
-			p.State, p.Epoch = peerState(r, m.state.Epoch), r.Epoch
-		case inTailnet && node.Online:
-			p.State = leadership.Silent
-		default:
-			p.State = leadership.Offline
-		}
-		if p.State == leadership.Offline {
-			p.OfflineFor, p.MayHaveLed = m.offlineFacts(name, node, inTailnet, now)
-		} else {
-			delete(m.peers.offlineSince, name)
-		}
-		peers = append(peers, p)
+	st := m.ledger.view(now)
+	peers := m.peers.see(sighting{
+		members: m.ledger.members(), tailnet: ts, answered: answered, epoch: st.Epoch,
+		bootAlive: st.BootAlive, failover: m.cfg.FailoverAfter(), now: now,
+	})
+	return leadership.View{
+		Self: ts.Self.Name, Hold: m.cfg.Hold, Leading: st.claiming(), Epoch: st.Epoch,
+		KnownLeader: st.Leader, Peers: peers, FailoverAfter: m.cfg.FailoverAfter(),
+		AutoFailback: m.cfg.AutoFailback, Forced: st.Forced, Pending: pendingHandOff(st, now, m.handOffWindow()),
 	}
-	sort.Slice(peers, func(i, j int) bool { return peers[i].Name < peers[j].Name })
-	return peers
 }
 
-// offlineFacts counts from Tailscale's last sight, which may predate this service's start.
-func (m *Machine) offlineFacts(name string, node tailnet.Node, inTailnet bool, now time.Time) (time.Duration, bool) {
-	since, seen := m.peers.offlineSince[name]
-	if !seen {
-		since = now
-		m.peers.offlineSince[name] = now
+// pendingHandOff is set while the leader this machine knows is a hand-off target it never heard back from.
+func pendingHandOff(st standing, now time.Time, window time.Duration) *leadership.PendingHandOff {
+	if st.HandOff == nil || st.HandOff.Target != st.Leader {
+		return nil
 	}
-	if inTailnet && !node.LastSeen.IsZero() && node.LastSeen.Before(since) {
-		since = node.LastSeen
-	}
-	mayHaveLed := !m.bootAlive.IsZero() && inTailnet && node.LastSeen.After(m.bootAlive.Add(m.cfg.FailoverAfter()))
-	return now.Sub(since), mayHaveLed
+	return &leadership.PendingHandOff{Age: now.Sub(st.HandOff.At), Window: window}
 }
 
-func peerState(r api.Report, epoch int64) leadership.PeerState {
-	switch {
-	case r.Leading:
-		return leadership.Leading
-	case r.Synced != nil && r.Synced.Epoch == epoch && r.Synced.SecondsAgo >= 0 &&
-		time.Duration(r.Synced.SecondsAgo)*time.Second < syncedWithin:
-		return leadership.Synced
-	}
-	return leadership.Standing
-}
+// handOffWindow is how long a request that timed out could still reach its machine.
+func (m *Machine) handOffWindow() time.Duration { return 3 * m.o.Tick }
 
-// holdersAmong asks devices publicly whether they run spinup and can hold the accounts, so the
-// key only ever goes to those.
-func (m *Machine) holdersAmong(ctx context.Context, devices map[string]tailnet.Node) map[string]tailnet.Node {
+// probe returns the reports of devices that prove they know the password; the key goes only to them.
+func (m *Machine) probe(ctx context.Context, devices map[string]tailnet.Node) map[string]api.Report {
 	holders := map[string]tailnet.Node{}
 	for name, l := range askAll(ctx, devices, m.askLeader) {
-		if l.Name == name && l.Hold.CanHold() {
+		if l.Name == name && l.Hold.CanHold() && l.Proof == api.KnowsPassword {
 			holders[name] = devices[name]
 		}
 	}
-	return holders
-}
-
-// probe asks members for their reports; only answers given under the expected name count.
-func (m *Machine) probe(ctx context.Context, members map[string]tailnet.Node) map[string]api.Report {
-	reports := askAll(ctx, members, func(ctx context.Context, name string, node tailnet.Node) (api.Report, error) {
+	return askAll(ctx, holders, func(ctx context.Context, name string, node tailnet.Node) (api.Report, error) {
 		var r api.Report
 		err := m.client().Get(ctx, m.peerURL(name, node.IP, api.PathState), &r)
 		if err == nil && r.Name != name {
@@ -141,13 +64,16 @@ func (m *Machine) probe(ctx context.Context, members map[string]tailnet.Node) ma
 		}
 		return r, err
 	})
-	return reports
 }
 
-func (m *Machine) askLeader(ctx context.Context, name string, node tailnet.Node) (api.Leader, error) {
-	var l api.Leader
-	err := m.publicClient().Get(ctx, m.peerURL(name, node.IP, api.PathLeader), &l)
-	return l, err
+type provenLeader struct {
+	api.Leader
+	Proof api.Proof
+}
+
+func (m *Machine) askLeader(ctx context.Context, name string, node tailnet.Node) (provenLeader, error) {
+	l, proof, err := m.publicClient().AskLeader(ctx, "http://"+m.o.PeerAddr(name, node.IP), name, m.o.Secrets)
+	return provenLeader{l, proof}, err
 }
 
 // askAll asks every device at once, two seconds each, and keeps the answers.
@@ -175,8 +101,7 @@ func askAll[T any](ctx context.Context, devices map[string]tailnet.Node, ask fun
 	return out
 }
 
-// findLeader is how a machine that never holds finds the accounts: it asks every online device
-// and follows the highest epoch that says it leads.
+// findLeader follows the highest epoch among devices that lead and prove they know the API key.
 func (m *Machine) findLeader(ctx context.Context, ts tailnet.Status) {
 	online := map[string]tailnet.Node{}
 	for _, p := range ts.Peers {
@@ -186,13 +111,11 @@ func (m *Machine) findLeader(ctx context.Context, ts tailnet.Status) {
 	}
 	addr, best := "", int64(-1)
 	for name, l := range askAll(ctx, online, m.askLeader) {
-		if l.Leading && l.Name == name && l.Epoch > best {
+		if l.Leading && l.Name == name && l.Proof >= api.KnowsAPIKey && l.Epoch > best {
 			addr, best = m.o.PeerAddr(name, online[name].IP), l.Epoch
 		}
 	}
-	m.mu.Lock()
-	m.leaderAddr = addr
-	m.mu.Unlock()
+	m.notes.routeTo(addr)
 }
 
 // learn remembers a machine that can hold and called with the key.
@@ -200,10 +123,7 @@ func (m *Machine) learn(name string, hold config.Hold) {
 	if name == "" || !hold.CanHold() {
 		return
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, known := m.state.Members[name]; !known && name != m.self.Name {
-		m.state.Members[name] = member{Hold: hold}
+	if m.ledger.meet(name, hold, m.tail.selfName()) {
 		m.log.Printf("met %s (%s)", name, hold)
 	}
 }

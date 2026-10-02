@@ -39,7 +39,7 @@ spinup install --standby    # asks for the dashboard password (on the hub: spinu
 spinup install              # only uses the accounts; asks for the API key (on the hub: spinup.py show-key)
 ```
 
-`--password` and `--api-key` pass those values without being asked. `spinup install --help` lists everything.
+`--password` and `--api-key` (or `SPINUP_PASSWORD` and `SPINUP_API_KEY`) pass those values without being asked. The API key may only have letters, digits and `. _ ~ + / = -`. `spinup install --help` lists everything.
 
 If the hub already runs the `spinup.py hub` proxy, the service takes it over: same logins, same keys, same dashboard password. Nothing has to be logged in again.
 
@@ -54,7 +54,7 @@ What `install` does:
    - **macOS:** a LaunchAgent `dev.spinup.daemon`. It runs while you're logged in.
 5. Writes `ccp` to point at `http://localhost:8317`.
 
-Re-running `install` repairs the machine and updates the service to the binary you ran it from. It keeps the machine's hold unless you pass `--hub` or `--standby`. To make a hub or standby stop holding, run `spinup uninstall`, then `spinup install`.
+Re-running `install` stops the running service (it hands the accounts on first), then repairs the machine and starts the service from the binary you ran it from. It keeps the machine's hold unless you pass `--hub` or `--standby`. To make a hub or standby stop holding, run `spinup uninstall`, then `spinup install`.
 
 ## Commands
 
@@ -62,8 +62,8 @@ Re-running `install` repairs the machine and updates the service to the binary y
 spinup status              # who holds the accounts, how fresh this machine's copy is, each login, every machine
 spinup status --json
 spinup handoff <machine>   # move the accounts to another hub/standby, safely
-spinup takeover            # hold the accounts here (only when their holder is lost for good; run it on that machine)
-spinup uninstall           # remove spinup; hands the accounts to a synced machine first
+spinup takeover            # hold the accounts here (only when their holder is lost for good; refused on the machine that holds them; valid for a minute)
+spinup uninstall           # remove spinup; stops the service, which hands the accounts to a synced machine first
 spinup --version
 ```
 
@@ -73,7 +73,9 @@ spinup --version
 
 **...the leader refreshes a login.** Within a few seconds it pushes the new copy to every hub/standby. A copy only ever replaces an older one (each login carries its last-refresh time).
 
-**...you shut the leader down normally.** It stops its proxy, sends its final logins to a synced hub/standby, and that machine takes over. This takes under a second.
+**...you shut the leader down normally.** It stops its proxy, sends its final logins to a synced hub/standby, and that machine takes over. This takes under a second. `spinup install` and `spinup uninstall` stop the service this way through a localhost-only call. On Windows, an OS shutdown or restart, and a power cut, stop the service without it: the others take over after `failover_after_seconds`.
+
+**...a hand-off gets no answer.** The old leader stays stopped and presumes the target holds the accounts. If the target shows it never took them, the old leader leads again; if the target is gone, the usual failover applies.
 
 **...the leader loses power or its network.** The others wait until **Tailscale's control server** has reported it offline for 3 minutes (`failover_after_seconds`). If they just can't reach it while Tailscale still sees it online, they wait instead, because it may still be using the accounts. Meanwhile, a leader that has lost Tailscale for half that time stops its own proxy. Then the best candidate (the hub first, then by name) takes over with the newest logins it can collect.
 
@@ -104,6 +106,7 @@ Restart the service after editing (re-run `spinup install`).
 
 - **Tailnet only.** Nothing listens on the internet. The front listens on `127.0.0.1`; the peer port on the Tailscale address, behind a firewall rule for `100.64.0.0/10` on Windows.
 - **Logins move only with the key.** Machines authenticate to each other with the dashboard password (header `X-Spinup-Key`, constant-time compared). Machines that only use the accounts never receive logins or the password.
+- **No secrets to imposters.** A device that says it holds the accounts must first answer a random challenge on `/spinup/leader` with a proof (HMAC-SHA256) of the password; a machine that only uses the accounts requires a proof of the API key before it forwards traffic. `spinup install --standby` checks the password proof before it asks for the keys.
 - **Least privilege.** The service runs as your user, never as SYSTEM or root. Admin is needed once on Windows (boot task and firewall rule) and for `enable-linger` on some Linux systems.
 - **Files.** Keys and logins are written readable by your user only, atomically. Logins that disappear from the leader are moved to `<auth_dir>-removed`, never deleted.
 - Use disk encryption (BitLocker, FileVault, LUKS) on every hub and standby.
