@@ -1,5 +1,5 @@
 {
-  "_comment": "Stack-specific skills, installed into a repo (not globally) by `spinup.py repo <path> --apply`. A rule fires when any `files` glob matches, or a package.json depends on any `packages`, and (if set) a matched file contains any `contains` string. Sources: docs/research/skills.md.",
+  "_comment": "Stack-specific skills, installed into a repo (not globally) by `spinup.py repo <path> --apply`. A rule fires when any `files` glob matches, or a package.json depends on any `packages`, and (if set) a matched file contains any `contains` string. See docs/WHY.md.",
   "rules": [
     {
       "stack": "Go",
@@ -18,9 +18,30 @@
       "note": "Next ships its own agent docs: on Next < 16.3 run `npx @next/codemod@canary agents-md` once; 16.3+ writes AGENTS.md on `next dev`."
     },
     {
+      "stack": "React",
+      "packages": ["react"],
+      "skills": {"vercel-labs/agent-skills": ["vercel-react-best-practices", "vercel-composition-patterns"]}
+    },
+    {
+      "stack": "shadcn/ui",
+      "files": ["components.json"],
+      "skills": {"shadcn/ui": ["shadcn"]}
+    },
+    {
+      "stack": "Better Auth",
+      "packages": ["better-auth"],
+      "skills": {"better-auth/skills": ["better-auth-best-practices"]}
+    },
+    {
+      "stack": "Turborepo",
+      "files": ["turbo.json"],
+      "skills": {"vercel/turborepo": ["turborepo"]}
+    },
+    {
       "stack": "Effect",
       "packages": ["effect"],
-      "note": "Point AGENTS.md at node_modules/effect/AGENTS.md (the global effect-ts skill does this)."
+      "skills": {"Effect-TS/skills": ["effect-ts"]},
+      "note": "effect-ts points the agent at node_modules/effect/AGENTS.md."
     },
     {
       "stack": "Flutter",

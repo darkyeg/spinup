@@ -5,9 +5,9 @@ This repo is the single source of truth for the user's machines: which machines 
 ## Tasks
 
 - **Check a machine** ("is everything OK?"): run `spinup.py doctor`; each problem prints its fix.
-- **Add a machine**: `spinup.py setup <name>` on it (`--hub` only for the hub). The name becomes its Tailscale name; clients find the hub on the tailnet. There is no machine list in the repo: Tailscale is the list, `spinup.py links` prints it.
+- **Add a machine**: `spinup.py setup <name>` on it, with a name the user chose (never an example name like `pc`) (`--hub` only for the hub). The name becomes its Tailscale name; clients find the hub on the tailnet. There is no machine list in the repo: Tailscale is the list, `spinup.py links` prints it.
 - **Set up or repair a machine** ("set up this PC/laptop/Mac"): `spinup.py setup <name>` does the machine part; follow [docs/SETUP.md](docs/SETUP.md) end to end.
-- **Change skills**: edit `skills/skills.json` (global) or `skills/per-repo.json` (stack rules), then run `spinup.py skills` / `spinup.py repo <path> --apply`. See [skills/README.md](skills/README.md).
+- **Change skills**: `spinup.py skills list | add <owner/repo> <skill> | remove <skill> | manual <skill> | auto <skill>` (add `--private` for the user's machines only, in `local/skills.json`). Stack rules: `skills/per-repo.json`, applied by `spinup.py repo <path> --apply`. See [skills/README.md](skills/README.md).
 - **Prepare a project repo for agents**: `spinup.py repo <path>` reports, `--apply` changes; commit the result in that repo.
 - **Add a dev tool to every machine**: add it to `packages.json`, then `spinup.py packages`.
 - **Change agent behaviour or token settings**: edit `agents/` (`AGENTS.md`, `claude/settings.json`, `codex/config.toml`, `claude/agents/`), then run `spinup.py agents`. Reasons behind the current values: [docs/WHY.md](docs/WHY.md).

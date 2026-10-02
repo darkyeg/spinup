@@ -27,9 +27,15 @@ def pull_latest() -> None:
 def cmd_setup(args: argparse.Namespace) -> None:
     pull_latest()
     st = tailscale_status()
-    name = (args.name or dns_name(st.get("Self", {})) or re.sub(r"[^a-z0-9-]", "-", platform.node().lower())).strip("-")
+    current = (dns_name(st.get("Self", {})) or re.sub(r"[^a-z0-9-]", "-", platform.node().lower())).strip("-")
+    name = args.name
+    if not name and sys.stdin.isatty():
+        print("This machine's name becomes its address on your tailnet: other machines reach it as\n"
+              f"`<name>` (e.g. http://<name>:{PORT}, ssh <name>). Lowercase letters, digits, dashes.")
+        name = input(f"Name for this machine [{current}]: ").strip().lower()
+    name = name or current
     if not NAME.match(name):
-        die(f"'{name}' can't be a machine name: use lowercase letters, digits and dashes (e.g. lenovo)")
+        die(f"'{name}' can't be a machine name: use lowercase letters, digits and dashes (e.g. office-pc)")
     hub = args.hub or EXE.exists()  # a machine that already runs the proxy stays the hub
     log(f"Setting up {name} as {'the hub' if hub else 'a client (finds the hub on the tailnet)'}")
     steps = [("dev tools", cmd_packages, {"check": False})]
@@ -39,8 +45,20 @@ def cmd_setup(args: argparse.Namespace) -> None:
         steps.append(("client: Tailscale + proxy", cmd_client, {"hub": None, "key": args.key}))
     steps += [("skills", cmd_skills, {}), ("agent config", cmd_agents, {}), ("health check", cmd_doctor, {})]
     for i, (what, fn, extra) in enumerate(steps, 1):
+        if fn is cmd_doctor:
+            print_addresses(name, hub)
         log(f"[{i}/{len(steps)}] {what}")
         fn(argparse.Namespace(name=name, **extra))
+
+
+def print_addresses(name: str, hub: bool) -> None:
+    full = (tailscale_status().get("Self", {}).get("DNSName") or "").rstrip(".")
+    print(f"\nThis machine is `{name}` on your tailnet{f' ({full})' if full else ''}. From your other machines:")
+    if hub:
+        print(f"  proxy API:        http://{name}:{PORT}")
+        print(f"  proxy dashboard:  http://{name}:{PORT}/management.html")
+    print(f"  any service:      http://{name}:<port>     ssh: ssh <user>@{name}")
+    print(f"  all machines:     {PY} links\n")
 
 
 def cmd_links(_: argparse.Namespace) -> None:

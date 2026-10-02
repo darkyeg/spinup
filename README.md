@@ -7,7 +7,7 @@
 You have a main PC and maybe a laptop or a Mac. You use Claude Code and Codex. spinup:
 
 - installs your dev tools (git, node, rg, fd, gh, go, rust, uv, bun, Claude Code, Codex);
-- connects your machines privately with [Tailscale](https://tailscale.com), so they reach each other by name (`pc`, `laptop`), at home or away;
+- connects your machines privately with [Tailscale](https://tailscale.com), so they reach each other by the names you give them, at home or away;
 - makes one machine the **hub**: it holds your Claude/Codex logins in [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI), and the others use them through it;
 - gives every machine the same **skills**, instructions and token-saving settings for Claude Code and Codex;
 - checks itself: `doctor` lists every problem with the command that fixes it.
@@ -18,17 +18,23 @@ Python standard library only. Windows, macOS and Linux. Every command is safe to
 
 You need git and Python 3.11+ (on Windows the python.org build; run it as `py`, not the Microsoft Store `python`).
 
+**1. Choose a name for each machine.** The name becomes the machine's address on your private network: if you call your hub `office-pc`, every other machine reaches it as `office-pc` (`http://office-pc:8317`, `ssh office-pc`). Lowercase letters, digits and dashes. Below, `<hub-name>` and `<machine-name>` are **placeholders**: replace them with your own names.
+
+**2. On your main machine (the hub, which holds the accounts):**
+
 ```bash
 git clone https://github.com/darkyeg/spinup && cd spinup
-
-# On your main machine (the hub):
-python3 spinup.py setup pc --hub
-
-# On every other machine (it finds the hub by itself):
-python3 spinup.py setup laptop
+python3 spinup.py setup <hub-name> --hub
 ```
 
-The first run opens a Tailscale login: use the **same Tailscale account** everywhere. A client asks for the hub's key once; get it on the hub with `spinup.py show-key`.
+**3. On every other machine (it finds the hub by itself):**
+
+```bash
+git clone https://github.com/darkyeg/spinup && cd spinup
+python3 spinup.py setup <machine-name>
+```
+
+Without a name, `setup` asks for one (and suggests the machine's current name). The first run opens a Tailscale login: use the **same Tailscale account** everywhere. A client asks for the hub's key once; get it on the hub with `spinup.py show-key`. At the end, `setup` prints the machine's addresses.
 
 Or just tell your agent: *"set up this machine with spinup"*. It follows [docs/SETUP.md](docs/SETUP.md).
 
@@ -50,7 +56,7 @@ Or just tell your agent: *"set up this machine with spinup"*. It follows [docs/S
 | `links` | Every device on your tailnet: name, IP, full domain, OS, online, which one is the hub |
 | `doctor` | Health check with a fix for each problem |
 | `packages` | Install missing tools from `packages.json` (winget / brew / apt; NixOS gets a config snippet) |
-| `skills` | Install the skills in `skills/skills.json` for Claude Code + Codex; park the rest |
+| `skills` | Install the skills in `skills/skills.json` for Claude Code + Codex; park the rest. Also `skills list / add / remove / manual / auto` |
 | `agents` | Install the shared instructions, a cheap Explore subagent and token-saving settings |
 | `repo <path>` | Detect a project's stack, add its skills (`--apply`), check its AGENTS.md size and git remote |
 | `hub` / `client` | Just the proxy part of `setup` |
@@ -62,9 +68,9 @@ Run them as `py spinup.py <command>` on Windows, `python3 spinup.py <command>` e
 ## How it works
 
 ```
- laptop ──┐                         ┌── Claude / Codex accounts
- mac    ──┼── Tailscale (private) ──┤   (CLIProxyAPI on the hub, port 8317)
- phone  ──┘                         └── hub: "pc"
+ <machine-name> ──┐                         ┌── Claude / Codex accounts
+ <machine-name> ──┼── Tailscale (private) ──┤   (CLIProxyAPI, http://<hub-name>:8317)
+ phone          ──┘                         └── <hub-name>
 ```
 
 - **Names, not IPs.** Tailscale gives each machine a fixed private IP and a name. spinup sets the name you choose. At home traffic goes straight over your router; away it goes direct over the internet, or through an encrypted relay if it must.
@@ -75,7 +81,8 @@ Run them as `py spinup.py <command>` on Windows, `python3 spinup.py <command>` e
 
 | Change | Edit, then run |
 |---|---|
-| Skills for every machine | `skills/skills.json` → `skills` |
+| Skills for every machine | `skills add <owner/repo> <skill>`, `skills remove <skill>` (or edit `skills/skills.json` → `skills`) |
+| Which skills run by themselves | `skills list` shows auto/manual and the token cost; `skills manual <skill>` makes one run only when you call it (`/skill` in Claude Code, `$skill` in Codex) |
 | Skills per project type (Go, Next.js, ...) | `skills/per-repo.json` → `repo <path> --apply` |
 | Instructions and settings for Claude Code / Codex | `agents/` → `agents` |
 | Dev tools | `packages.json` → `packages` |

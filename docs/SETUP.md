@@ -4,10 +4,10 @@ Steps for an agent setting up (or repairing) one machine. Each step ends on a ch
 
 ## 1. Identify the machine
 
-Pick its name (lowercase letters, digits, dashes): it becomes its Tailscale name, the shortcut every other machine uses to reach it at home or away. Role (**hub** holds the accounts and runs the proxy; there is one hub; everything else is a **client**), OS.
+**Ask the user for its name** (lowercase letters, digits, dashes); never copy a name from an example or from another machine. The name becomes its Tailscale name: every other machine reaches it as `<name>`, e.g. `http://<name>:8317`, at home or away. Role (**hub** holds the accounts and runs the proxy; there is one hub; everything else is a **client**), OS.
 Done when: you know the name and role. If the user didn't say and `spinup.py links` shows a hub already, it's a client.
 
-**Fast path:** after cloning (step 2's bootstrap), `$PY spinup.py setup <name>` pulls this repo, runs steps 2-4 in one go and ends with `doctor`. Then do steps 5-7.
+**Fast path:** after cloning (step 2's bootstrap), `$PY spinup.py setup <name>` (add `--hub` for the hub) pulls this repo, runs steps 2-4 in one go and ends with `doctor`. Then do steps 5-7.
 
 ## 2. Base tools
 

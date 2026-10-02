@@ -4,6 +4,7 @@ from __future__ import annotations
 from . import agents, packages
 from .common import *
 from .proxy import installed_version, latest_release
+from .skills import load_manifest
 from .tailscale import dns_name, tailnet_nodes, tailscale_bin, tailscale_status
 
 
@@ -131,7 +132,7 @@ def check_proxy(r: Report) -> None:
 
 def check_agents(r: Report) -> None:
     print("Agents")
-    manifest = json.loads(SKILLS_MANIFEST.read_text(encoding="utf-8"))
+    manifest = load_manifest()
     want = {n for names in manifest["sources"].values() for n in names} | set(own_skills())
     have = {p.name for p in SKILLS_HOME.iterdir() if p.is_dir()} if SKILLS_HOME.exists() else set()
     if want - have or have - want:

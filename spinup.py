@@ -8,6 +8,7 @@
     py spinup.py client              # this machine uses the hub's proxy over Tailscale
     py spinup.py packages            # install missing dev tools (packages.json)
     py spinup.py skills              # global skills (skills/skills.json) for Claude + Codex
+    py spinup.py skills list         # what's installed, auto or manual, token cost (also: add, remove, manual, auto)
     py spinup.py agents              # shared AGENTS.md, cheap Explore subagent, token-saving settings
     py spinup.py repo <path>         # per-repo: stack skills, AGENTS.md size, git remote
     py spinup.py update              # update CLIProxyAPI (keeps config + accounts), skills, Tailscale
@@ -29,7 +30,7 @@ from spin.machines import cmd_links, cmd_setup
 from spin.packages import cmd_packages
 from spin.proxy import cmd_client, cmd_hub, cmd_show_key, cmd_status, cmd_update
 from spin.repo import cmd_repo
-from spin.skills import cmd_skills
+from spin.skills import cmd_skills, cmd_skills_add, cmd_skills_list, cmd_skills_mode, cmd_skills_remove
 
 
 def main() -> None:
@@ -55,8 +56,26 @@ def main() -> None:
     k = sub.add_parser("packages", help="install missing dev tools from packages.json")
     k.add_argument("--check", action="store_true", help="only list what's missing")
     k.set_defaults(fn=cmd_packages)
-    sub.add_parser("skills", help="install skills/skills.json for Claude Code + Codex, park the rest"
-                   ).set_defaults(fn=cmd_skills)
+    sk = sub.add_parser("skills", help="install skills/skills.json for Claude Code + Codex, park the rest")
+    sk.set_defaults(fn=cmd_skills)
+    sks = sk.add_subparsers(dest="skills_cmd", metavar="{list,add,remove,manual,auto}")
+    sks.add_parser("list", help="every skill: auto or manual, where from, token cost").set_defaults(fn=cmd_skills_list)
+    private = argparse.ArgumentParser(add_help=False)
+    private.add_argument("--private", action="store_true", help="edit local/skills.json (only your machines) "
+                         "instead of skills/skills.json")
+    a = sks.add_parser("add", parents=[private], help="add skills from a GitHub repo and install them")
+    a.add_argument("source", help="GitHub owner/repo, e.g. anthropics/skills")
+    a.add_argument("names", nargs="+", help="skill names in that repo")
+    a.add_argument("--manual", action="store_true", help="install as manual: runs only when you call it")
+    a.set_defaults(fn=cmd_skills_add)
+    rm = sks.add_parser("remove", parents=[private], help="remove skills from the list (they get parked)")
+    rm.add_argument("names", nargs="+")
+    rm.set_defaults(fn=cmd_skills_remove)
+    for mode, text in (("manual", "make skills run only when you call them (/name, $name); no tokens until then"),
+                       ("auto", "let the agent use skills by itself (the default)")):
+        m = sks.add_parser(mode, parents=[private], help=text)
+        m.add_argument("names", nargs="+")
+        m.set_defaults(fn=cmd_skills_mode, mode=mode)
     sub.add_parser("agents", help="install agents/: shared instructions, subagents, settings"
                    ).set_defaults(fn=cmd_agents)
     r = sub.add_parser("repo", help="per-repo: stack skills, AGENTS.md size, git remote")
