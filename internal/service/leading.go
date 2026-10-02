@@ -16,7 +16,11 @@ import (
 const (
 	proxyStartTimeout  = 45 * time.Second
 	sendAccountsWithin = 60 * time.Second
-	shutdownWithin     = 20 * time.Second
+	// shutdownWithin is what a stopping service gets to hand the accounts on, after shutdownDrainWithin of waiting for running requests.
+	shutdownWithin      = 20 * time.Second
+	shutdownDrainWithin = 30 * time.Second
+	// drainWithin is how long a planned move waits for running requests before it cuts them.
+	drainWithin = 2 * time.Minute
 )
 
 // lead takes newer logins from the other machines first, then starts if nobody else holds the accounts.
@@ -68,6 +72,7 @@ func (m *Machine) startProxy(ctx context.Context, epoch int64, previous claim) e
 		m.save()
 		return err
 	}
+	m.activity.open()
 	m.ledger.finishLeading()
 	m.notes.routeTo("")
 	m.replica.pushAgain()
@@ -98,18 +103,26 @@ func (m *Machine) restartProxy(ctx context.Context) error {
 	if !m.ledger.view(time.Now()).Leading {
 		return nil
 	}
+	m.drainRequests(ctx, drainWithin)
 	m.o.Proxy.Stop(m.quiet)
+	if m.activity.mustStop() {
+		m.ledger.stopLeading()
+		m.save()
+		return errors.New("stopped the proxy instead of restarting it: this machine must stop using the accounts")
+	}
 	if err := m.launchProxy(ctx); err != nil {
 		m.ledger.stopLeading()
 		m.save()
 		return fmt.Errorf("the updated proxy didn't start: %w", err)
 	}
+	m.activity.open()
 	m.log.Printf("restarted the proxy")
 	return nil
 }
 
 // stepDown stops at once: another machine runs the accounts, so waiting for quiet would only let both refresh.
 func (m *Machine) stepDown(ctx context.Context, leader string, epoch int64, ts tailnet.Status) {
+	m.activity.hurry()
 	m.transition.Lock()
 	if m.ledger.stopLeading() {
 		m.o.Proxy.Stop(nil)
@@ -135,12 +148,23 @@ func (m *Machine) fenceIfCutOff(why string) {
 		m.log.Printf("%s", why)
 	}
 	if m.ledger.view(time.Now()).Leading && cutOffTooLong(elapsed, m.cfg.FailoverAfter()) {
+		m.activity.hurry()
 		m.releaseLocally(why + " for too long; another machine may take over")
 	}
 }
 
-// handOff stops the proxy and sends the final logins; if the target's answer is unknown it presumes the target holds them.
-func (m *Machine) handOff(ctx context.Context, target string) error {
+// drainRequests lets the requests running through the proxy finish, still serving new ones, for at most limit.
+func (m *Machine) drainRequests(ctx context.Context, limit time.Duration) {
+	if running := m.activity.inFlight(); running > 0 {
+		m.log.Printf("waiting up to %s for %d running requests to finish", limit, running)
+	}
+	if cut := m.activity.drain(ctx, limit); cut > 0 {
+		m.log.Printf("%d requests were still running after %s; stopping the proxy cuts them", cut, limit)
+	}
+}
+
+// handOff waits for running requests, then stops the proxy and sends the final logins; if the target's answer is unknown it presumes the target holds them.
+func (m *Machine) handOff(ctx context.Context, target string, drainFor time.Duration) error {
 	m.transition.Lock()
 	defer m.transition.Unlock()
 	st := m.ledger.view(time.Now())
@@ -153,6 +177,7 @@ func (m *Machine) handOff(ctx context.Context, target string) error {
 	case !answers:
 		return fmt.Errorf("%s doesn't answer, or can't hold the accounts", target)
 	}
+	m.drainRequests(ctx, drainFor)
 	m.ledger.stopLeading()
 	m.o.Proxy.Stop(m.quiet)
 	err := m.sendAccounts(ctx, target, st.Epoch+1)
@@ -219,10 +244,13 @@ func (m *Machine) receive(accounts api.Logins) error {
 // shutdown hands the accounts to a synced machine if there is one, so a planned stop never leaves them unheld.
 func (m *Machine) shutdown() {
 	if m.ledger.view(time.Now()).Leading {
-		ctx, cancel := context.WithTimeout(context.Background(), shutdownWithin)
-		target := m.handOffTarget(ctx)
-		if target == "" || m.handOff(ctx, target) != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownDrainWithin+shutdownWithin)
+		if target := m.handOffTarget(ctx); target == "" {
+			m.drainRequests(ctx, shutdownDrainWithin)
 			m.releaseLocally("service stopping and no synced machine to hand the accounts to")
+		} else if m.handOff(ctx, target, shutdownDrainWithin) != nil {
+			m.drainRequests(ctx, shutdownDrainWithin)
+			m.releaseLocally("service stopping and the hand-off failed")
 		}
 		cancel()
 	}

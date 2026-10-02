@@ -31,6 +31,7 @@ type serviceRequest struct {
 
 // installService runs the accounts service now and at every boot, and writes ccp.
 func installService(ctx context.Context, req serviceRequest) error {
+	before := storedSettings()
 	cfg, err := serviceConfig(req)
 	if err != nil {
 		return err
@@ -54,7 +55,7 @@ func installService(ctx context.Context, req serviceRequest) error {
 	if err := config.Save(cfg); err != nil {
 		return err
 	}
-	if err := startAtBoot(cfg); err != nil {
+	if err := startAtBoot(cfg, before != storedSettings()); err != nil {
 		return err
 	}
 	if err := writeLauncher(cfg.Port, apiKey); err != nil {
@@ -84,13 +85,18 @@ func serviceConfig(req serviceRequest) (config.Config, error) {
 	return cfg, nil
 }
 
-func startAtBoot(cfg config.Config) error {
+func startAtBoot(cfg config.Config, settingsChanged bool) error {
+	reason := restartReason(currentFacts(cfg, settingsChanged))
+	if reason == "" {
+		step("The accounts service is running and unchanged; leaving it alone")
+		return nil
+	}
 	exe, err := stageBinary()
 	if err != nil {
 		return err
 	}
 	stopService()
-	step("Starting the accounts service at boot")
+	step("Starting the accounts service at boot (%s)", reason)
 	return registerAutostart(exe, cfg)
 }
 

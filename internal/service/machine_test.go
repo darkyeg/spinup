@@ -9,8 +9,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -65,7 +67,7 @@ type seenFrom struct {
 func (s seenFrom) Status(context.Context) (tailnet.Status, error) {
 	s.net.mu.Lock()
 	defer s.net.mu.Unlock()
-	st := tailnet.Status{Running: true, Self: tailnet.Node{Name: s.self, IP: "127.0.0.1", Online: true}}
+	st := tailnet.Status{Running: true, Self: tailnet.Node{Name: s.self, IP: "127.0.0.1", Online: s.net.online[s.self]}}
 	for name, online := range s.net.online {
 		if name != s.self {
 			st.Peers = append(st.Peers, tailnet.Node{Name: name, IP: "127.0.0.1", Online: online, LastSeen: s.net.lastSeen[name]})
@@ -83,6 +85,31 @@ type fakeProxy struct {
 	mu      sync.Mutex
 	srv     *http.Server
 	gate    chan struct{}
+
+	streaming  chan struct{} // one value per /stream request that has sent its first chunk
+	finish     chan struct{} // closed to let every /stream request end
+	finishOnce sync.Once
+	active     atomic.Int32
+	cut        atomic.Int32 // requests still running when the proxy stopped
+}
+
+func (p *fakeProxy) finishStreams() { p.finishOnce.Do(func() { close(p.finish) }) }
+
+func (p *fakeProxy) serve(w http.ResponseWriter, r *http.Request) {
+	p.active.Add(1)
+	defer p.active.Add(-1)
+	if r.URL.Path != "/stream" {
+		fmt.Fprintf(w, "CLI Proxy API Server on %s", p.machine)
+		return
+	}
+	fmt.Fprint(w, "first ")
+	_ = http.NewResponseController(w).Flush()
+	p.streaming <- struct{}{}
+	select {
+	case <-p.finish:
+		fmt.Fprintf(w, "last on %s", p.machine)
+	case <-r.Context().Done():
+	}
 }
 
 func (p *fakeProxy) holdStarts() (release func()) {
@@ -113,9 +140,7 @@ func (p *fakeProxy) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	p.srv = &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprintf(w, "CLI Proxy API Server on %s", p.machine)
-	})}
+	p.srv = &http.Server{Handler: http.HandlerFunc(p.serve)}
 	go p.srv.Serve(l)
 	now := p.running.Add(1)
 	for most := p.most.Load(); now > most && !p.most.CompareAndSwap(most, now); most = p.most.Load() {
@@ -127,6 +152,7 @@ func (p *fakeProxy) Stop(func() bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.srv != nil {
+		p.cut.Add(p.active.Load())
 		p.srv.Close()
 		p.srv = nil
 		p.running.Add(-1)
@@ -140,12 +166,15 @@ func (p *fakeProxy) Running() bool {
 }
 
 type testMachine struct {
-	name    string
-	hold    config.Hold
+	name string
+	hold config.Hold
+	// keeps: the machine does not hand the accounts back to the hub on its own.
+	keeps   bool
 	dir     string
 	front   string
 	peerAPI string
 	m       *Machine
+	logbook *logbook
 	proxy   *fakeProxy
 	stop    context.CancelFunc
 	done    chan struct{}
@@ -166,7 +195,7 @@ func newTestTailnet(t *testing.T) *testTailnet {
 }
 
 func (tn *testTailnet) add(name string, hold config.Hold) *testMachine {
-	tm := &testMachine{name: name, hold: hold, dir: tn.t.TempDir(), front: freeAddr(tn.t), peerAPI: freeAddr(tn.t)}
+	tm := &testMachine{name: name, hold: hold, dir: tn.t.TempDir(), front: freeAddr(tn.t), peerAPI: freeAddr(tn.t), logbook: &logbook{}}
 	tn.all[name] = tm
 	tn.net.mu.Lock()
 	tn.net.peerAPI[name] = tm.peerAPI
@@ -177,15 +206,19 @@ func (tn *testTailnet) add(name string, hold config.Hold) *testMachine {
 func (tn *testTailnet) start(tm *testMachine) {
 	cfg := config.Defaults()
 	cfg.Hold, cfg.FailoverAfterSeconds = tm.hold, 1
+	cfg.AutoFailback = !tm.keeps
 	cfg.ProxyPort = freePort(tn.t)
 	cfg.AuthDir = filepath.Join(tm.dir, "auth")
-	tm.proxy = &fakeProxy{machine: tm.name, port: cfg.ProxyPort, running: &tn.running, most: &tn.most}
+	tm.proxy = &fakeProxy{
+		machine: tm.name, port: cfg.ProxyPort, running: &tn.running, most: &tn.most,
+		streaming: make(chan struct{}, 8), finish: make(chan struct{}),
+	}
 	o := Options{
 		Config: cfg, Tailnet: seenFrom{tn.net, tm.name}, Version: "test",
 		Secrets:   config.Secrets{APIKey: "k"},
-		Log:       log.New(testLog{tn.t, tm.name}, "", 0),
+		Log:       log.New(testLog{tn.t, tm.name, tm.logbook}, "", 0),
 		StatePath: filepath.Join(tm.dir, "state.json"), FrontListen: tm.front, PeerListen: tm.peerAPI,
-		Tick:     50 * time.Millisecond,
+		Tick: 50 * time.Millisecond, HandBackIdle: 100 * time.Millisecond,
 		PeerAddr: func(name, _ string) string { return tn.net.addr(name) },
 	}
 	if tm.hold.CanHold() {
@@ -343,7 +376,7 @@ func TestAHandOffWithNoAnswerLeavesNobodyRunningTwice(t *testing.T) {
 	tn.waitFor("the hub sees the standby", func() bool { return len(hub.m.peers.holders()) == 1 })
 
 	tn.net.setCutOff("sb", true)
-	if err := hub.m.handOff(context.Background(), "sb"); err == nil {
+	if err := hub.m.handOff(context.Background(), "sb", drainWithin); err == nil {
 		t.Fatal("a hand-off nobody answered must not report success")
 	}
 	if l := tn.leaders(); len(l) != 0 {
@@ -375,7 +408,7 @@ func TestASlowTargetNeverRunsAlongsideASenderThatGaveUpWaiting(t *testing.T) {
 	release := sb.proxy.holdStarts()
 	ctx, giveUp := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	handedAt := time.Now()
-	_ = hub.m.handOff(ctx, "sb")
+	_ = hub.m.handOff(ctx, "sb", drainWithin)
 	giveUp()
 	tn.waitFor("the hub sees the standby starting and follows it", func() bool {
 		return hub.m.Report().Leader == "sb" && hubSees(hub, "sb", leadership.Starting)
@@ -575,9 +608,257 @@ func freePort(t *testing.T) int {
 type testLog struct {
 	t       *testing.T
 	machine string
+	book    *logbook
 }
 
 func (w testLog) Write(p []byte) (int, error) {
-	w.t.Logf("[%s] %s", w.machine, strings.TrimSpace(string(p)))
+	line := strings.TrimSpace(string(p))
+	w.book.add(line)
+	w.t.Logf("[%s] %s", w.machine, line)
 	return len(p), nil
+}
+
+// logbook keeps a machine's log lines, so a test can wait for a decision to be taken.
+type logbook struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+func (b *logbook) add(line string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.lines = append(b.lines, line)
+}
+
+func (b *logbook) has(part string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return slices.ContainsFunc(b.lines, func(l string) bool { return strings.Contains(l, part) })
+}
+
+type streamed struct {
+	status int
+	body   string
+}
+
+// streamThrough starts a request to /stream on the machine's localhost and returns its eventual result.
+func streamThrough(front string) <-chan streamed {
+	done := make(chan streamed, 1)
+	go func() {
+		resp, err := http.Get("http://" + front + "/stream")
+		if err != nil {
+			done <- streamed{body: "error: " + err.Error()}
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		done <- streamed{resp.StatusCode, string(body)}
+	}()
+	return done
+}
+
+func (tn *testTailnet) waitForStream(tm *testMachine) {
+	tn.t.Helper()
+	tn.waitFor(tm.name+"'s proxy is streaming an answer", func() bool {
+		select {
+		case <-tm.proxy.streaming:
+			return true
+		default:
+			return false
+		}
+	})
+}
+
+func (tn *testTailnet) result(done <-chan streamed) streamed {
+	tn.t.Helper()
+	select {
+	case r := <-done:
+		return r
+	case <-time.After(15 * time.Second):
+		tn.t.Fatal("the request never finished")
+		return streamed{}
+	}
+}
+
+func (tn *testTailnet) assertOneProxyAtATime() {
+	tn.t.Helper()
+	if most := tn.most.Load(); most != 1 {
+		tn.t.Fatalf("%d proxies ran at once; never more than 1", most)
+	}
+}
+
+func TestAHandBackWaitsForTheAnswerStreamingOnTheStandby(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	sb := tn.add("sb", config.HoldStandby)
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	tn.start(sb)
+	tn.waitFor("the standby is synced", func() bool { return sb.m.Report().Synced != nil })
+	tn.crash(hub)
+	tn.waitFor("the standby takes over", tn.leaderIs("sb"))
+
+	answer := streamThrough(sb.front)
+	tn.waitForStream(sb)
+	tn.start(hub)
+	tn.waitFor("the standby keeps the accounts and says why", func() bool {
+		return strings.Contains(sb.m.Report().Waiting, "running requests finish")
+	})
+	if l := tn.leaders(); len(l) != 1 || l[0] != "sb" {
+		t.Fatalf("leaders %v while an answer is streaming, want only sb", l)
+	}
+	if got := sb.m.Report().InFlight; got != 1 {
+		t.Fatalf("the standby reports %d requests running, want 1", got)
+	}
+
+	sb.proxy.finishStreams()
+	if got := tn.result(answer); got.status != http.StatusOK || got.body != "first last on sb" {
+		t.Fatalf("the client got %d %q, want the whole answer from sb", got.status, got.body)
+	}
+	tn.waitFor("the hub leads after the answer ended", tn.leaderIs("hub"))
+	if cut := sb.proxy.cut.Load(); cut != 0 {
+		t.Fatalf("the hand-back cut %d running requests", cut)
+	}
+	tn.shutDown(hub)
+	tn.shutDown(sb)
+	tn.assertOneProxyAtATime()
+}
+
+func TestAHandOffLetsARunningAnswerFinishBeforeTheProxyStops(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	sb := tn.add("sb", config.HoldStandby)
+	sb.keeps = true
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	tn.start(sb)
+	tn.waitFor("the standby is synced", func() bool { return sb.m.Report().Synced != nil })
+	tn.waitFor("the hub sees the standby", func() bool { return len(hub.m.peers.holders()) == 1 })
+
+	answer := streamThrough(hub.front)
+	tn.waitForStream(hub)
+	handed := make(chan error, 1)
+	go func() { handed <- hub.m.handOff(context.Background(), "sb", drainWithin) }()
+	tn.waitFor("the hub waits for the running answer", func() bool { return hub.logbook.has("running requests to finish") })
+	if !hub.proxy.Running() || !hub.m.Report().Leading {
+		t.Fatal("the hub stopped before the running answer finished")
+	}
+
+	hub.proxy.finishStreams()
+	if got := tn.result(answer); got.body != "first last on hub" {
+		t.Fatalf("the client got %q, want the whole answer from hub", got.body)
+	}
+	if err := <-handed; err != nil {
+		t.Fatalf("hand-off: %v", err)
+	}
+	tn.waitFor("the standby holds the accounts", tn.leaderIs("sb"))
+	if cut := hub.proxy.cut.Load(); cut != 0 {
+		t.Fatalf("the hand-off cut %d running requests", cut)
+	}
+	tn.shutDown(hub)
+	tn.shutDown(sb)
+	tn.assertOneProxyAtATime()
+}
+
+func TestAHandOffCutsWhatStillRunsAtTheDrainLimitAndSaysSo(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	sb := tn.add("sb", config.HoldStandby)
+	sb.keeps = true
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	tn.start(sb)
+	tn.waitFor("the standby is synced", func() bool { return sb.m.Report().Synced != nil })
+	tn.waitFor("the hub sees the standby", func() bool { return len(hub.m.peers.holders()) == 1 })
+
+	stuck := streamThrough(hub.front)
+	tn.waitForStream(hub)
+	if err := hub.m.handOff(context.Background(), "sb", 50*time.Millisecond); err != nil {
+		t.Fatalf("hand-off: %v", err)
+	}
+	if !hub.logbook.has("1 requests were still running") {
+		t.Error("the log doesn't say how many requests were cut")
+	}
+	if got := tn.result(stuck); got.body == "first last on hub" {
+		t.Error("the stuck request should have been cut")
+	}
+	tn.waitFor("the standby holds the accounts", tn.leaderIs("sb"))
+	tn.shutDown(hub)
+	tn.shutDown(sb)
+	tn.assertOneProxyAtATime()
+}
+
+func TestARequestDuringAManualHandOffIsHeldAndServedByTheNewLeader(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	sb := tn.add("sb", config.HoldStandby)
+	sb.keeps = true
+	laptop := tn.add("laptop", config.HoldNever)
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	tn.start(sb)
+	tn.start(laptop)
+	tn.waitFor("the standby is synced", func() bool { return sb.m.Report().Synced != nil })
+	tn.waitFor("the hub sees the standby", func() bool { return len(hub.m.peers.holders()) == 1 })
+	tn.waitFor("the laptop reaches the hub", func() bool { return strings.Contains(get(laptop.front, "/v1/models"), "on hub") })
+
+	release := sb.proxy.holdStarts()
+	handed := make(chan error, 1)
+	go func() { handed <- hub.m.handOff(context.Background(), "sb", drainWithin) }()
+	tn.waitFor("the hub stopped leading", func() bool { return !hub.m.Report().Leading })
+
+	sent := make(chan struct{})
+	trace := &httptrace.ClientTrace{WroteRequest: func(httptrace.WroteRequestInfo) { close(sent) }}
+	req, _ := http.NewRequestWithContext(httptrace.WithClientTrace(context.Background(), trace), http.MethodGet, "http://"+laptop.front+"/v1/models", nil)
+	answer := make(chan streamed, 1)
+	go func() {
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			answer <- streamed{body: "error: " + err.Error()}
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		answer <- streamed{resp.StatusCode, string(body)}
+	}()
+	<-sent
+	release()
+
+	if got := tn.result(answer); got.status != http.StatusOK || !strings.Contains(got.body, "on sb") {
+		t.Fatalf("the laptop got %d %q, want sb's answer after the switch", got.status, got.body)
+	}
+	if err := <-handed; err != nil {
+		t.Fatalf("hand-off: %v", err)
+	}
+	tn.shutDown(laptop)
+	tn.shutDown(hub)
+	tn.shutDown(sb)
+	tn.assertOneProxyAtATime()
+}
+
+func TestALeaderThatLosesTailscaleStopsEvenWhileItWaitsForRunningAnswers(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	sb := tn.add("sb", config.HoldStandby)
+	sb.keeps = true
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	tn.start(sb)
+	tn.waitFor("the standby is synced", func() bool { return sb.m.Report().Synced != nil })
+	tn.waitFor("the hub sees the standby", func() bool { return len(hub.m.peers.holders()) == 1 })
+
+	stuck := streamThrough(hub.front)
+	tn.waitForStream(hub)
+	handed := make(chan error, 1)
+	go func() { handed <- hub.m.handOff(context.Background(), "sb", drainWithin) }()
+	tn.waitFor("the hub waits for the running answer", func() bool { return hub.logbook.has("running requests to finish") })
+
+	tn.net.setOnline("hub", false)
+	tn.waitFor("the cut-off hub stops its proxy without waiting out the drain", func() bool { return !hub.proxy.Running() })
+	tn.result(stuck)
+	<-handed
+	tn.net.setOnline("hub", true)
+	tn.shutDown(hub)
+	tn.shutDown(sb)
+	tn.assertOneProxyAtATime()
 }

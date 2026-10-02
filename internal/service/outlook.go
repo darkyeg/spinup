@@ -7,6 +7,7 @@ type outlook struct {
 	mu         sync.Mutex
 	waiting    string
 	leaderAddr string
+	everRouted bool
 }
 
 // note records why the machine waits, empty when it doesn't, and reports a new reason.
@@ -25,6 +26,14 @@ func (o *outlook) routeTo(addr string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.leaderAddr = addr
+	o.everRouted = o.everRouted || addr != ""
+}
+
+// sawLeader reports whether requests ever had a leader to go to.
+func (o *outlook) sawLeader() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.everRouted
 }
 
 func (o *outlook) get() (waiting, leaderAddr string) {

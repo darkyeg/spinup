@@ -59,6 +59,16 @@ type Peer struct {
 	MayHaveLed bool `json:"may_have_led"`
 }
 
+// HandBackIdle is how long the leader must have served no request before it hands the accounts back.
+const HandBackIdle = 30 * time.Second
+
+// Activity is the leader's traffic through its own proxy.
+type Activity struct {
+	InFlight int
+	// IdleFor is the time since the last request ended.
+	IdleFor time.Duration
+}
+
 type View struct {
 	Self          string
 	Hold          config.Hold
@@ -68,6 +78,9 @@ type View struct {
 	Peers         []Peer
 	FailoverAfter time.Duration
 	AutoFailback  bool
+	Activity      Activity
+	// IdleBeforeHandBack is the quiet time the leader needs before it hands back.
+	IdleBeforeHandBack time.Duration
 	// Forced: the user ran `spinup takeover` because the leader is lost for good.
 	Forced bool
 	// Pending is set while a hand-off from this machine has an unknown outcome.
@@ -100,7 +113,15 @@ type Decision struct {
 	Leader string // Follow, StepDown
 	Epoch  int64  // Lead, Follow, StepDown
 	Target string // HandOff
-	Reason string // Lead, HandOff, Wait
+	Reason string // Lead, HandOff, Wait, Stay
+}
+
+// Waiting is what the machine tells while it neither leads nor moves the accounts.
+func (d Decision) Waiting() string {
+	if d.Kind == Wait || d.Kind == Stay {
+		return d.Reason
+	}
+	return ""
 }
 
 func (d Decision) String() string {
@@ -156,11 +177,23 @@ func decideAsLeader(v View, claim *Peer) Decision {
 	if v.Hold == config.HoldStandby && v.AutoFailback {
 		for _, p := range v.Peers {
 			if p.Hold == config.HoldHub && p.State == Synced {
-				return Decision{Kind: HandOff, Target: p.Name, Reason: "the hub is back and synced"}
+				return handBack(v, p)
 			}
 		}
 	}
 	return Decision{Kind: Stay}
+}
+
+// handBack moves the accounts to the hub only between requests, so no running answer is cut.
+func handBack(v View, hub Peer) Decision {
+	const why = "the hub is back and synced"
+	switch {
+	case v.Activity.InFlight > 0:
+		return Decision{Kind: Stay, Reason: why + "; handing back when the running requests finish"}
+	case v.Activity.IdleFor < v.IdleBeforeHandBack:
+		return Decision{Kind: Stay, Reason: fmt.Sprintf("%s; handing back after %s without requests", why, v.IdleBeforeHandBack)}
+	}
+	return Decision{Kind: HandOff, Target: hub.Name, Reason: why}
 }
 
 // resume: this machine led last, and logins refreshed elsewhere since would make it send an outdated refresh token.

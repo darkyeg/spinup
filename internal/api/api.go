@@ -14,6 +14,8 @@ const (
 	ForwardedHeader = "X-Spinup-Forwarded"
 	// HoldHeader lets machines learn about each other the moment one calls another.
 	HoldHeader = "X-Spinup-Hold"
+	// NotHoldingHeader marks a 503 from a machine that no longer holds the accounts: the request never ran, so the sender may retry it.
+	NotHoldingHeader = "X-Spinup-Not-Holding"
 )
 
 const (
@@ -66,6 +68,7 @@ type Report struct {
 	Synced       *Sync             `json:"synced,omitempty"`
 	ProxyRunning bool              `json:"proxy_running"`
 	Waiting      string            `json:"waiting,omitempty"`
+	InFlight     int               `json:"in_flight,omitempty"`
 	Accounts     []logins.Summary  `json:"accounts,omitempty"`
 	Peers        []leadership.Peer `json:"peers,omitempty"`
 }

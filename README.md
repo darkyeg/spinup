@@ -78,7 +78,7 @@ Prefer your agent to do it? Tell it *"set up this machine with spinup"*: it foll
 
 - **Names, not IPs.** Tailscale gives each machine a fixed private address and the name you chose. At home traffic goes straight over your router; away, directly over the internet, or through an encrypted relay when it must.
 - **No machine list to keep.** Tailscale is the list; spinup reads it.
-- **One holder at a time.** A standby takes over only when Tailscale itself reports the holder offline for three minutes, never just because it can't reach it. A planned stop hands the accounts over in a second. How this stays safe: [docs/DESIGN.md](docs/DESIGN.md). Day-to-day use: [docs/SERVICE.md](docs/SERVICE.md).
+- **One holder at a time.** A standby takes over only when Tailscale itself reports the holder offline for three minutes, never just because it can't reach it. Planned moves wait for running requests and never cut one; requests sent during any switch wait for the new holder instead of failing. In plain words: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md); the full safety design: [docs/DESIGN.md](docs/DESIGN.md). Day-to-day use: [docs/SERVICE.md](docs/SERVICE.md).
 - **One source of truth.** Fork this repo to make it yours: skills, instructions, settings and tools live in it, and `setup` pulls your latest version first.
 
 ## Make it yours

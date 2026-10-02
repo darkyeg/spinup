@@ -64,9 +64,14 @@ func (m *Machine) peerListenAddr() string {
 	return net.JoinHostPort(ip, strconv.Itoa(m.cfg.Port))
 }
 
-func sleep(ctx context.Context, d time.Duration) {
+// sleep reports whether d passed before ctx ended.
+func sleep(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
 	select {
+	case <-timer.C:
+		return true
 	case <-ctx.Done():
-	case <-time.After(d):
+		return false
 	}
 }

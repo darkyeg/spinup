@@ -166,11 +166,11 @@ func TestPendingHandOffAppliesOnlyToItsTarget(t *testing.T) {
 	}
 }
 
-func TestACutOffLeaderStopsAtHalfTheFailoverTime(t *testing.T) {
+func TestACutOffLeaderStopsSoonAfterItNotices(t *testing.T) {
 	for _, c := range []struct {
 		elapsed time.Duration
 		want    bool
-	}{{0, false}, {89 * time.Second, false}, {90 * time.Second, true}, {time.Hour, true}} {
+	}{{0, false}, {9 * time.Second, false}, {10 * time.Second, true}, {time.Hour, true}} {
 		if got := cutOffTooLong(c.elapsed, 3*time.Minute); got != c.want {
 			t.Errorf("cut off for %v: got %v, want %v", c.elapsed, got, c.want)
 		}

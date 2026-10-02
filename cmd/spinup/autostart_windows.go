@@ -94,3 +94,7 @@ func elevatedPowerShell(script, request string) *exec.Cmd {
 	return exec.Command("powershell", "-NoProfile", "-Command",
 		"Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList "+strings.Join(quoted, ","))
 }
+
+func autostartRegistered() bool {
+	return exec.Command("schtasks", "/Query", "/TN", "spinup").Run() == nil
+}

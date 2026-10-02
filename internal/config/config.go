@@ -96,6 +96,10 @@ func defaultProxyDir() string {
 	return filepath.Join(home(), ".local", "share", "cliproxyapi")
 }
 
+// minFailoverAfter is the shortest safe failover time: a machine may need up to two minutes to notice it lost
+// Tailscale (its control client's watchdog), then stops ten seconds later; the rest is margin.
+const minFailoverAfter = 150 * time.Second
+
 var ErrNotInstalled = errors.New("spinup isn't installed on this machine: run `spinup setup <name>`")
 
 // Load reads config.json over the defaults.
@@ -113,6 +117,10 @@ func Load() (Config, error) {
 	}
 	if !c.Hold.known() {
 		return c, fmt.Errorf("%s: unknown hold %q", Path(), c.Hold)
+	}
+	if c.FailoverAfter() < minFailoverAfter {
+		return c, fmt.Errorf("%s: failover_after_seconds must be at least %d, or two machines could hold the accounts at once",
+			Path(), int(minFailoverAfter.Seconds()))
 	}
 	return c, nil
 }

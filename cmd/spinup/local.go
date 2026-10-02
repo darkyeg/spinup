@@ -12,7 +12,12 @@ import (
 	"github.com/darkyeg/spinup/internal/config"
 )
 
-const stopWithin = time.Minute
+const (
+	// moveWithin covers a planned move: running requests finishing, the proxy stopping and the next leader starting.
+	moveWithin = 5 * time.Minute
+	// stopWithin covers the same for a stopping service, which waits less for running requests.
+	stopWithin = 2 * time.Minute
+)
 
 // local is this machine's spinup service, reached on localhost.
 type local struct {
@@ -54,7 +59,7 @@ func (l local) report() (api.Report, error) {
 }
 
 func (l local) handOff(to string) error {
-	return l.call(3*time.Minute, http.MethodPost, api.PathHandoff, api.Handoff{To: to}, nil)
+	return l.call(moveWithin, http.MethodPost, api.PathHandoff, api.Handoff{To: to}, nil)
 }
 
 func (l local) takeOver() error {
@@ -63,7 +68,7 @@ func (l local) takeOver() error {
 
 // restartProxy makes the service run the proxy's new binary, if this machine holds the accounts.
 func (l local) restartProxy() error {
-	return l.call(2*time.Minute, http.MethodPost, api.PathRestart, struct{}{}, nil)
+	return l.call(moveWithin, http.MethodPost, api.PathRestart, struct{}{}, nil)
 }
 
 // stop asks the service to hand the accounts on if it holds them and exit, then waits for it to be gone.

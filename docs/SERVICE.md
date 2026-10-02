@@ -54,7 +54,7 @@ What the accounts service step does:
    - **macOS:** a LaunchAgent `dev.spinup.daemon`. It runs while you're logged in.
 5. Writes `ccp` to point at `http://localhost:8317`.
 
-Re-running `spinup setup` stops the running service (it hands the accounts on first), repairs the machine and starts the service from the binary you ran it from. It keeps the machine's hold unless you pass `--hub` or `--standby`. To make a hub or standby stop holding, run `spinup uninstall`, then `spinup setup <name>`.
+Re-running `spinup setup` repairs the machine and leaves a running service alone. It restarts the service (which hands the accounts on first, and lets running requests finish) only when the binary you ran differs from the installed one, `config.json` or the keys changed, or the boot task or service isn't registered or doesn't answer. It keeps the machine's hold unless you pass `--hub` or `--standby`. To make a hub or standby stop holding, run `spinup uninstall`, then `spinup setup <name>`.
 
 ## Commands
 
@@ -74,13 +74,15 @@ spinup --version
 
 **...the leader refreshes a login.** Within a few seconds it pushes the new copy to every hub/standby. A copy only ever replaces an older one (each login carries its last-refresh time).
 
-**...you shut the leader down normally.** It stops its proxy, sends its final logins to a synced hub/standby, and that machine takes over. This takes under a second. `spinup setup` and `spinup uninstall` stop the service this way through a localhost-only call. On Windows, an OS shutdown or restart, and a power cut, stop the service without it: the others take over after `failover_after_seconds`.
+**...you shut the leader down normally.** It waits for requests running through its proxy (up to 30 seconds), stops its proxy, sends its final logins to a synced hub/standby, and that machine takes over. With nothing running this takes under a second. `spinup setup` and `spinup uninstall` stop the service this way through a localhost-only call. On Windows, an OS shutdown or restart, and a power cut, stop the service without it: the others take over after `failover_after_seconds`.
 
 **...a hand-off gets no answer.** The old leader stays stopped and presumes the target holds the accounts. If the target shows it never took them, the old leader leads again; if the target is gone, the usual failover applies.
 
-**...the leader loses power or its network.** The others wait until **Tailscale's control server** has reported it offline for 3 minutes (`failover_after_seconds`). If they just can't reach it while Tailscale still sees it online, they wait instead, because it may still be using the accounts. Meanwhile, a leader that has lost Tailscale for half that time stops its own proxy. Then the best candidate (the hub first, then by name) takes over with the newest logins it can collect.
+**...the leader loses power or its network.** The others wait until **Tailscale's control server** has reported it offline for 3 minutes (`failover_after_seconds`). If they just can't reach it while Tailscale still sees it online, they wait instead, because it may still be using the accounts. Meanwhile, a leader that notices it has lost Tailscale stops its own proxy 10 seconds later, long before anyone may take over. Then the best candidate (the hub first, then by name) takes over with the newest logins it can collect. Requests sent in the meantime wait for the new leader instead of failing.
 
-**...the hub comes back.** It doesn't start its proxy. It syncs from the current leader, and the leader hands the accounts back (`auto_failback`, on by default).
+**...the hub comes back.** It doesn't start its proxy. It syncs from the current leader, and the leader hands the accounts back (`auto_failback`, on by default) once no request has run through its proxy for 30 seconds. While requests run, `spinup status` shows them and says the hand-back is waiting.
+
+**...you hand the accounts over (`spinup handoff`, `spinup update`'s proxy restart).** The leader first lets running requests finish, up to 2 minutes, then stops its proxy. Requests that arrive during the switch are held up to a minute and answered by the new leader instead of failing.
 
 **...a computer sleeps.** On wake, a leader stops using the accounts until it has checked that nobody took over meanwhile.
 
@@ -97,7 +99,7 @@ spinup --version
 | `hold` | `never` | `never`, `standby` or `hub` |
 | `port` | `8317` | `localhost` on every machine and, on hub/standby, the Tailscale port |
 | `proxy_port` | `8327` | CLIProxyAPI's own port, `127.0.0.1` only |
-| `failover_after_seconds` | `180` | How long Tailscale must report the leader offline before another machine takes over |
+| `failover_after_seconds` | `180` | How long Tailscale must report the leader offline before another machine takes over; at least 150, because a machine can take up to two minutes to notice it lost Tailscale |
 | `auto_failback` | `true` | Hand the accounts back to the hub when it returns |
 | `proxy_dir`, `auth_dir` | `%LOCALAPPDATA%\CLIProxyAPI` on Windows, `~/Library/Application Support/CLIProxyAPI` on macOS, `~/.local/share/cliproxyapi` elsewhere; `~/.cli-proxy-api` | CLIProxyAPI and the logins |
 

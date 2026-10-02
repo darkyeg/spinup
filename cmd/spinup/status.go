@@ -64,7 +64,7 @@ func printReport(out io.Writer, r api.Report, port int) {
 func accountsLine(r api.Report) string {
 	switch {
 	case r.Leading && r.ProxyRunning:
-		return fmt.Sprintf("held here (epoch %d)", r.Epoch)
+		return fmt.Sprintf("held here (epoch %d)%s", r.Epoch, runningRequests(r.InFlight))
 	case r.Leading:
 		return fmt.Sprintf("held here (epoch %d), but CLIProxyAPI isn't running", r.Epoch)
 	case !r.Hold.CanHold() && r.LeaderAddr != "":
@@ -73,6 +73,16 @@ func accountsLine(r api.Report) string {
 		return fmt.Sprintf("held by %s (epoch %d); %s", r.Leader, r.Epoch, syncLine(r.Synced))
 	}
 	return "nobody holds them right now"
+}
+
+func runningRequests(n int) string {
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return ", 1 request running"
+	}
+	return fmt.Sprintf(", %d requests running", n)
 }
 
 func syncLine(s *api.Sync) string {

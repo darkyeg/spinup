@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/darkyeg/spinup/internal/atomicfile"
@@ -65,3 +66,7 @@ func agentPath() string {
 func guiDomain() string { return fmt.Sprintf("gui/%d", os.Getuid()) }
 
 func agentTarget() string { return guiDomain() + "/" + agentLabel }
+
+func autostartRegistered() bool {
+	return exec.Command("launchctl", "print", agentTarget()).Run() == nil
+}

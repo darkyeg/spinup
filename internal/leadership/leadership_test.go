@@ -1,6 +1,8 @@
 package leadership
 
 import (
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,7 +12,7 @@ import (
 const failover = 3 * time.Minute
 
 func view(self string, hold config.Hold, peers ...Peer) View {
-	return View{Self: self, Hold: hold, Peers: peers, FailoverAfter: failover, AutoFailback: true}
+	return View{Self: self, Hold: hold, Peers: peers, FailoverAfter: failover, AutoFailback: true, IdleBeforeHandBack: HandBackIdle}
 }
 
 func hub(state PeerState, epoch int64) Peer {
@@ -108,8 +110,14 @@ func TestDecide(t *testing.T) {
 		{"a leader steps down for a higher epoch",
 			leading(view("hub", config.HoldHub, standby(Leading, 3)), 2), StepDown},
 		{"a leader keeps leading over a lower epoch", noFailback, Stay},
-		{"a standby leader hands back to a synced hub",
-			leading(view("sb", config.HoldStandby, hub(Synced, 2)), 2), HandOff},
+		{"a standby leader hands back to a synced hub once idle long enough",
+			withActivity(leading(view("sb", config.HoldStandby, hub(Synced, 2)), 2), 0, HandBackIdle), HandOff},
+		{"a standby leader that never served a request hands back at once",
+			withActivity(leading(view("sb", config.HoldStandby, hub(Synced, 2)), 2), 0, math.MaxInt64), HandOff},
+		{"a standby leader with a request running keeps the accounts",
+			withActivity(leading(view("sb", config.HoldStandby, hub(Synced, 2)), 2), 1, time.Hour), Stay},
+		{"a standby leader idle too briefly keeps the accounts",
+			withActivity(leading(view("sb", config.HoldStandby, hub(Synced, 2)), 2), 0, HandBackIdle-time.Second), Stay},
 		{"a standby leader keeps the accounts until the hub is synced",
 			leading(view("sb", config.HoldStandby, hub(Standing, 2)), 2), Stay},
 	}
@@ -119,6 +127,25 @@ func TestDecide(t *testing.T) {
 				t.Errorf("got %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+func withActivity(v View, inFlight int, idleFor time.Duration) View {
+	v.Activity = Activity{InFlight: inFlight, IdleFor: idleFor}
+	return v
+}
+
+func TestABusyLeaderSaysWhyItKeepsTheAccounts(t *testing.T) {
+	busy := withActivity(leading(view("sb", config.HoldStandby, hub(Synced, 2)), 2), 2, 0)
+	if got := Decide(busy).Waiting(); !strings.Contains(got, "requests finish") {
+		t.Errorf("a busy leader tells %q, want the reason to name the running requests", got)
+	}
+	recent := withActivity(busy, 0, time.Second)
+	if got := Decide(recent).Waiting(); !strings.Contains(got, HandBackIdle.String()) {
+		t.Errorf("a recently busy leader tells %q, want the reason to name the quiet time %s", got, HandBackIdle)
+	}
+	if got := Decide(withActivity(busy, 0, HandBackIdle)).Waiting(); got != "" {
+		t.Errorf("a leader that hands back tells %q, want nothing", got)
 	}
 }
 

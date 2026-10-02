@@ -24,8 +24,8 @@ const (
 const (
 	loginsLimit  = 64 << 20
 	commandLimit = 4 << 10
-	// handoffTimeout covers the leader waiting for its proxy to go quiet and the target starting its own.
-	handoffTimeout = 2 * time.Minute
+	// handoffTimeout covers draining running requests, the leader's proxy going quiet and the target starting its own.
+	handoffTimeout = drainWithin + 2*time.Minute
 )
 
 func (m *Machine) routes(a audience) http.Handler {
@@ -138,7 +138,7 @@ func (m *Machine) serveHandoff(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch {
 	case st.Leading:
-		err = m.handOff(ctx, req.To)
+		err = m.handOff(ctx, req.To, drainWithin)
 	case st.Leader != "" && r.Header.Get(api.ForwardedHeader) == "":
 		err = m.callPeer(ctx, st.Leader, api.PathHandoff, req, nil)
 	default:

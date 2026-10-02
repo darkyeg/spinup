@@ -42,6 +42,8 @@ type Options struct {
 	FrontListen string
 	PeerListen  string
 	Tick        time.Duration
+	// HandBackIdle replaces leadership.HandBackIdle.
+	HandBackIdle time.Duration
 }
 
 // Machine is this machine running spinup: it wires the units that each own one part of its state.
@@ -55,13 +57,14 @@ type Machine struct {
 
 	transition sync.Mutex // one leadership change at a time
 
-	ledger  *ledger
-	peers   *peerView
-	tail    tailView
-	replica replica
-	fence   fence
-	notes   outlook
-	repairs repairs
+	ledger   *ledger
+	peers    *peerView
+	tail     tailView
+	replica  replica
+	fence    fence
+	notes    outlook
+	repairs  repairs
+	activity activity
 }
 
 func New(o Options) *Machine {
@@ -158,11 +161,7 @@ func (m *Machine) tick(ctx context.Context) {
 }
 
 func (m *Machine) act(ctx context.Context, d leadership.Decision, ts tailnet.Status) {
-	if d.Kind == leadership.Wait {
-		m.waitFor(d.Reason)
-	} else {
-		m.waitFor("")
-	}
+	m.waitFor(d.Waiting())
 	switch d.Kind {
 	case leadership.Lead:
 		m.log.Printf("decision: %v", d)
@@ -176,7 +175,7 @@ func (m *Machine) act(ctx context.Context, d leadership.Decision, ts tailnet.Sta
 		m.follow(ctx, d.Leader, d.Epoch, ts)
 	case leadership.HandOff:
 		m.log.Printf("decision: %v", d)
-		if err := m.handOff(ctx, d.Target); err != nil {
+		if err := m.handOff(ctx, d.Target, drainWithin); err != nil {
 			m.log.Printf("hand-off to %s failed: %v", d.Target, err)
 		}
 	}

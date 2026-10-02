@@ -15,3 +15,5 @@ var errNoAutostart = errors.New("spinup can't start itself at boot on " + runtim
 func registerAutostart(string, config.Config) error { return errNoAutostart }
 
 func unregisterAutostart(config.Config) error { return errNoAutostart }
+
+func autostartRegistered() bool { return false }

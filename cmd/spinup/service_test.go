@@ -96,3 +96,48 @@ func TestPollUntilStopsAsSoonAsTheConditionHolds(t *testing.T) {
 		t.Fatal("a false condition cannot succeed")
 	}
 }
+
+func TestWhenSetupRestartsTheService(t *testing.T) {
+	cases := []struct {
+		name string
+		f    serviceFacts
+		want string
+	}{
+		{"running, same binary, same settings", serviceFacts{boot: answering}, ""},
+		{"not registered at boot", serviceFacts{boot: notRegistered}, "registered"},
+		{"registered but silent", serviceFacts{boot: registeredSilent}, "answering"},
+		{"a different binary", serviceFacts{boot: answering, binaryChanged: true}, "differs"},
+		{"changed settings", serviceFacts{boot: answering, configChanged: true}, "settings"},
+		{"silent wins over changes", serviceFacts{boot: registeredSilent, binaryChanged: true, configChanged: true}, "answering"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := restartReason(c.f)
+			if (c.want == "") != (got == "") || !strings.Contains(got, c.want) {
+				t.Errorf("restartReason(%+v) = %q, want it to mention %q", c.f, got, c.want)
+			}
+		})
+	}
+}
+
+func TestStoredSettingsDifferWhenTheKeysChange(t *testing.T) {
+	t.Setenv("SPINUP_HOME", t.TempDir())
+	cfg := config.Defaults()
+	cfg.ProxyDir = t.TempDir()
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.SaveSecrets(cfg, config.Secrets{APIKey: "a", ManagementPassword: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	before := storedSettings()
+	if before != storedSettings() {
+		t.Fatal("unchanged files must give equal settings")
+	}
+	if err := config.SaveSecrets(cfg, config.Secrets{APIKey: "b", ManagementPassword: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	if before == storedSettings() {
+		t.Fatal("a new API key must count as a change")
+	}
+}

@@ -63,3 +63,9 @@ func sameFile(a, b string) bool {
 	fb, errB := os.Stat(b)
 	return errA == nil && errB == nil && os.SameFile(fa, fb)
 }
+
+// binaryChanged reports whether the installed binary differs from the one running.
+func binaryChanged() bool {
+	self, err := os.Executable()
+	return err != nil || !sameContent(self, installedBinary())
+}

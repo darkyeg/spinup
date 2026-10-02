@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"time"
@@ -33,7 +34,8 @@ func (m *Machine) observe(ctx context.Context, ts tailnet.Status) leadership.Vie
 	return leadership.View{
 		Self: ts.Self.Name, Hold: m.cfg.Hold, Leading: st.claiming(), Epoch: st.Epoch,
 		KnownLeader: st.Leader, Peers: peers, FailoverAfter: m.cfg.FailoverAfter(),
-		AutoFailback: m.cfg.AutoFailback, Forced: st.Forced, Pending: pendingHandOff(st, now, m.handOffWindow()),
+		AutoFailback: m.cfg.AutoFailback, Activity: m.activity.snapshot(now), IdleBeforeHandBack: m.handBackIdle(),
+		Forced: st.Forced, Pending: pendingHandOff(st, now, m.handOffWindow()),
 	}
 }
 
@@ -47,6 +49,10 @@ func pendingHandOff(st standing, now time.Time, window time.Duration) *leadershi
 
 // handOffWindow is how long a request that timed out could still reach its machine.
 func (m *Machine) handOffWindow() time.Duration { return 3 * m.o.Tick }
+
+func (m *Machine) handBackIdle() time.Duration {
+	return cmp.Or(m.o.HandBackIdle, leadership.HandBackIdle)
+}
 
 // probe returns the reports of devices that prove they know the password; the key goes only to them.
 func (m *Machine) probe(ctx context.Context, devices map[string]tailnet.Node) map[string]api.Report {

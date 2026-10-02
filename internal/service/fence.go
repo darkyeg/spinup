@@ -27,5 +27,11 @@ func (f *fence) connected() {
 	f.since = time.Time{}
 }
 
-// cutOffTooLong: a leader cut off from Tailscale stops at half of failoverAfter, before another machine may take over.
-func cutOffTooLong(elapsed, failoverAfter time.Duration) bool { return elapsed >= failoverAfter/2 }
+// fenceAfter is how long a leader that noticed it lost Tailscale keeps going, to ride out a blip.
+const fenceAfter = 10 * time.Second
+
+// cutOffTooLong: a leader stops fenceAfter after it notices the cut (sooner when failoverAfter is short), which
+// the shortest failover time config allows keeps well before any other machine may take over.
+func cutOffTooLong(elapsed, failoverAfter time.Duration) bool {
+	return elapsed >= min(fenceAfter, failoverAfter/2)
+}
