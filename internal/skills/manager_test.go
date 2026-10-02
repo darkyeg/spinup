@@ -3,9 +3,11 @@ package skills
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -223,5 +225,67 @@ func TestAddEditsPrivateListAndSyncs(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(f.root, "local", "skills.json"))
 	if !strings.Contains(string(data), `"o/new": ["fresh"]`) || !reflect.DeepEqual(f.calls, []string{"o/a", "o/new"}) {
 		t.Fatalf("private manifest = %s, installs = %v", data, f.calls)
+	}
+}
+
+func TestSyncWithoutACheckoutParksNothingAndSaysSo(t *testing.T) {
+	f := newFixture(t, sampleManifest)
+	var said []string
+	f.manager.src = source.Builtin()
+	f.manager.logf = func(format string, a ...any) { said = append(said, fmt.Sprintf(format, a...)) }
+	write(t, filepath.Join(f.paths.store, "stray", "SKILL.md"), "x")
+
+	synced, err := f.manager.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(synced.Parked) > 0 || !exists(filepath.Join(f.paths.store, "stray")) {
+		t.Fatalf("parked %v", synced.Parked)
+	}
+	if !slices.Contains(said, ParkingSkipped) {
+		t.Fatalf("said %q", said)
+	}
+	unlisted, err := f.manager.Unlisted()
+	if err != nil || len(unlisted) > 0 {
+		t.Fatalf("Unlisted = %v, %v", unlisted, err)
+	}
+}
+
+func TestUnlistedCountsLinkedSkillDirsLikeSyncDoes(t *testing.T) {
+	f := newFixture(t, sampleManifest)
+	elsewhere := filepath.Join(t.TempDir(), "linked")
+	write(t, filepath.Join(elsewhere, "SKILL.md"), "x")
+	if err := os.MkdirAll(f.paths.store, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(f.paths.store, "linked")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+
+	unlisted, err := f.manager.Unlisted()
+	if err != nil || !reflect.DeepEqual(unlisted, []string{"linked"}) {
+		t.Fatalf("Unlisted = %v, %v", unlisted, err)
+	}
+	synced, err := f.manager.Sync(context.Background())
+	if err != nil || !reflect.DeepEqual(synced.Parked, unlisted) {
+		t.Fatalf("Sync parked %v, %v", synced.Parked, err)
+	}
+}
+
+func TestPublishParksARealDirectoryInsteadOfDeletingIt(t *testing.T) {
+	f := newFixture(t, sampleManifest)
+	write(t, filepath.Join(f.root, "skills", "local", "mine", "SKILL.md"), "ours")
+	write(t, filepath.Join(f.paths.claudeSkills(), "mine", "notes.txt"), "the user's")
+
+	if _, err := f.manager.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if !exists(filepath.Join(f.paths.parked, "mine", "notes.txt")) {
+		t.Fatal("the user's directory was not kept in the parked folder")
+	}
+	if !exists(filepath.Join(f.paths.claudeSkills(), "mine", "SKILL.md")) {
+		t.Fatal("own skill is not linked")
 	}
 }

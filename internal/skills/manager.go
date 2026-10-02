@@ -18,6 +18,9 @@ import (
 	"github.com/darkyeg/spinup/internal/source"
 )
 
+// ParkingSkipped is said when Sync leaves unlisted skills alone because it can only see the built-in list.
+const ParkingSkipped = "parking skipped: no spinup checkout here"
+
 // OwnSource is the Source of skills that ship as folders instead of coming from a skills repo.
 const OwnSource = "own (skills/local, local/skills)"
 
@@ -166,6 +169,10 @@ func (m Manager) publishOwn(ctx context.Context) ([]ownSkill, error) {
 }
 
 func (m Manager) parkUnlisted(keep []string, failedInstalls int) ([]string, error) {
+	if !m.seesOwnSkills() {
+		m.logf("%s", ParkingSkipped)
+		return nil, nil
+	}
 	installed, err := m.paths.installed()
 	if err != nil {
 		return nil, err
@@ -178,6 +185,32 @@ func (m Manager) parkUnlisted(keep []string, failedInstalls int) ([]string, erro
 		m.logf("Parked %d unlisted skills in %s (move one back to re-enable it)", len(parked), m.paths.parked)
 	}
 	return parked, nil
+}
+
+// seesOwnSkills is false for the built-in copy, which can't see the skills kept in a checkout or the private repo.
+func (m Manager) seesOwnSkills() bool {
+	_, err := m.src.Checkout()
+	return err == nil
+}
+
+// Unlisted returns the installed skills that Sync would park; without a checkout it can't tell, so none.
+func (m Manager) Unlisted() ([]string, error) {
+	if !m.seesOwnSkills() {
+		return nil, nil
+	}
+	list, err := m.manifest()
+	if err != nil {
+		return nil, err
+	}
+	own, err := findOwn(m.src.Data(), m.src.Private())
+	if err != nil {
+		return nil, err
+	}
+	installed, err := m.paths.installed()
+	if err != nil {
+		return nil, err
+	}
+	return parkable(installed, keepList(list, own), 0), nil
 }
 
 // List returns every listed and own skill, sorted by name.

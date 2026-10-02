@@ -43,6 +43,7 @@ func TestAccounts(t *testing.T) {
 		{"waiting", Service{Installed: true, Report: &api.Report{Waiting: "hub online but silent"}}, Warn, "hub online but silent"},
 		{"held elsewhere", Service{Installed: true, Report: &api.Report{Leader: "office-pc"}}, OK, "held by office-pc"},
 		{"proxy behind", Service{Installed: true, Report: &leading, ProxyVersion: "1.0", ProxyLatest: "1.1"}, Warn, "latest is 1.1"},
+		{"macOS holder", Service{Installed: true, Report: &leading, LoginOnly: true}, Warn, "only while you are logged in"},
 		{"proxy version unknown", Service{Installed: true, Report: &leading, ProxyLatest: "1.1"}, OK, "held here"},
 	}
 	for _, c := range cases {

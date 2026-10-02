@@ -1,5 +1,5 @@
 {
-  "_comment": "Stack-specific skills, installed into a repo (not globally) by `spinup.py repo <path> --apply`. A rule fires when any `files` glob matches, or a package.json depends on any `packages`, and (if set) a matched file contains any `contains` string. See docs/WHY.md.",
+  "_comment": "Stack-specific skills, installed into a repo (not globally) by `spinup repo <path> --apply`. A rule fires when any `files` glob matches, or a package.json depends on any `packages`, and (if set) a matched file contains any `contains` string. See docs/WHY.md.",
   "rules": [
     {
       "stack": "Go",

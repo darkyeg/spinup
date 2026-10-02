@@ -1,10 +1,10 @@
-# CLIProxyAPI config, rendered by spinup.py (`hub`) or the spinup service. Edit this template in
+# CLIProxyAPI config, rendered by the spinup service. Edit this template in
 # the repo, then re-run — don't edit the rendered config.yaml (it is overwritten).
 # Full option list: config.example.yaml next to the installed binary.
 config-version: 8
 
 server:
-  host: "{{HOST}}"    # spinup.py: all interfaces (firewall limits it to Tailscale); spinup service: 127.0.0.1
+  host: "{{HOST}}"    # the spinup service binds 127.0.0.1; spinup itself serves the Tailscale address
   port: {{PORT}}
 
 management:

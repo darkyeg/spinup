@@ -14,6 +14,10 @@
 
 The machine holding the accounts right now is the **leader**. Usually that's the hub.
 
+Re-running `spinup setup <name>` keeps a machine's hold. To make a hub or standby a machine that only uses the accounts again, run `spinup uninstall` (it hands the accounts on first), then `spinup setup <name>` without a flag. The logins and `secrets.json` stay on disk, so delete them yourself if the machine should no longer have them.
+
+On macOS the service is a LaunchAgent, so a hub or standby Mac holds the accounts only while you are logged in; `spinup doctor` warns about it.
+
 ## One address everywhere: `http://localhost:8317`
 
 Every machine with the service answers on `http://localhost:8317`:

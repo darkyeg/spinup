@@ -63,3 +63,16 @@ func envOr(name, fallback string) string {
 	}
 	return fallback
 }
+
+// PathWith appends dir to a PATH-style list unless it already holds it.
+func PathWith(list, dir string) (string, bool) {
+	for _, p := range filepath.SplitList(list) {
+		if p != "" && sameDir(p, dir) {
+			return list, false
+		}
+	}
+	if list == "" {
+		return dir, true
+	}
+	return list + string(os.PathListSeparator) + dir, true
+}

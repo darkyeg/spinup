@@ -23,7 +23,7 @@ try {
             Unregister-ScheduledTask -TaskName 'spinup' -Confirm:$false
         }
     } else {
-        # spinup.py's always-on proxy would hold the port.
+        # An always-on proxy from an earlier setup would hold the port.
         Stop-Task 'CLIProxyAPI'
         if (Get-ScheduledTask -TaskName 'CLIProxyAPI' -ErrorAction SilentlyContinue) {
             Disable-ScheduledTask -TaskName 'CLIProxyAPI' | Out-Null

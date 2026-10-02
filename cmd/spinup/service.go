@@ -8,11 +8,18 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/darkyeg/spinup/internal/api"
 	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/proxy"
 	"github.com/darkyeg/spinup/internal/release"
 	"github.com/darkyeg/spinup/internal/source"
 	"github.com/darkyeg/spinup/internal/tailnet"
+)
+
+const (
+	serviceStartWithin = 45 * time.Second
+	leaderReachWithin  = 20 * time.Second
+	pollEvery          = time.Second
 )
 
 // serviceRequest is what setup asks of the accounts service; an empty hold keeps the machine's hold.
@@ -24,18 +31,9 @@ type serviceRequest struct {
 
 // installService runs the accounts service now and at every boot, and writes ccp.
 func installService(ctx context.Context, req serviceRequest) error {
-	cfg, err := config.Load()
-	if err != nil && !errors.Is(err, config.ErrNotInstalled) {
+	cfg, err := serviceConfig(req)
+	if err != nil {
 		return err
-	}
-	if req.hold != "" || errors.Is(err, config.ErrNotInstalled) {
-		cfg.Hold = cmp.Or(req.hold, config.HoldNever)
-	}
-	if cfg.Tailscale == "" {
-		cfg.Tailscale = tailnet.Find()
-	}
-	if dir, err := req.repo.Checkout(); err == nil {
-		cfg.Repo = dir
 	}
 	ts, err := tailnet.CLI{Bin: cfg.Tailscale}.Status(ctx)
 	if err := tailscaleProblem(ts, err); err != nil {
@@ -56,19 +54,44 @@ func installService(ctx context.Context, req serviceRequest) error {
 	if err := config.Save(cfg); err != nil {
 		return err
 	}
+	if err := startAtBoot(cfg); err != nil {
+		return err
+	}
+	if err := writeLauncher(cfg.Port, apiKey); err != nil {
+		return err
+	}
+	if err := waitForService(cfg); err != nil {
+		return err
+	}
+	reportAccess(cfg)
+	return nil
+}
+
+func serviceConfig(req serviceRequest) (config.Config, error) {
+	cfg, err := config.Load()
+	if err != nil && !errors.Is(err, config.ErrNotInstalled) {
+		return cfg, err
+	}
+	if req.hold != "" || errors.Is(err, config.ErrNotInstalled) {
+		cfg.Hold = cmp.Or(req.hold, config.HoldNever)
+	}
+	if cfg.Tailscale == "" {
+		cfg.Tailscale = tailnet.Find()
+	}
+	if dir, err := req.repo.Checkout(); err == nil {
+		cfg.Repo = dir
+	}
+	return cfg, nil
+}
+
+func startAtBoot(cfg config.Config) error {
 	exe, err := stageBinary()
 	if err != nil {
 		return err
 	}
 	stopService()
 	step("Starting the accounts service at boot")
-	if err := registerAutostart(exe, cfg); err != nil {
-		return err
-	}
-	if err := writeLauncher(cfg.Port, apiKey); err != nil {
-		return err
-	}
-	return waitForService(cfg)
+	return registerAutostart(exe, cfg)
 }
 
 func tailscaleProblem(ts tailnet.Status, err error) error {
@@ -105,12 +128,59 @@ func ensureProxy(ctx context.Context, cfg config.Config) error {
 
 func waitForService(cfg config.Config) error {
 	local := localService(cfg, "")
-	for deadline := time.Now().Add(45 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
-		if _, err := local.leader(); err == nil {
-			return nil
-		}
+	started := pollUntil(serviceStartWithin, func() bool {
+		_, err := local.leader()
+		return err == nil
+	})
+	if !started {
+		return fmt.Errorf("the service didn't start; see %s", filepath.Join(config.StateDir(), "spinup.log"))
 	}
-	return fmt.Errorf("the service didn't start; see %s", filepath.Join(config.StateDir(), "spinup.log"))
+	return nil
 }
 
-func step(format string, a ...any) { fmt.Printf("==> "+format+"\n", a...) }
+func reportAccess(cfg config.Config) {
+	local := localService(cfg, "")
+	if cfg.Hold.CanHold() {
+		reportDashboard(cfg, local)
+		return
+	}
+	reached := pollUntil(leaderReachWithin, func() bool {
+		r, err := local.report()
+		return err == nil && reachesLeader(r)
+	})
+	if !reached {
+		step("Warning: this machine doesn't reach the accounts yet. The hub or standby may be off, or the API key may be wrong. " +
+			"Check with `spinup status`; to fix the key run `spinup setup <name> --api-key <key>` (`spinup keys` on the hub).")
+	}
+}
+
+func reachesLeader(r api.Report) bool { return r.Leader != "" && r.LeaderAddr != "" }
+
+func reportDashboard(cfg config.Config, local local) {
+	step("Dashboard: %s", dashboardURL(cfg.Port))
+	if cfg.Hold != config.HoldHub {
+		return
+	}
+	var report api.Report
+	leading := pollUntil(leaderReachWithin, func() bool {
+		r, err := local.report()
+		report = r
+		return err == nil && r.Leading
+	})
+	if leading && len(report.Accounts) == 0 {
+		step("No accounts yet: open the dashboard > OAuth Login to add them")
+	}
+}
+
+func dashboardURL(port int) string { return fmt.Sprintf("http://localhost:%d/management.html", port) }
+
+func pollUntil(within time.Duration, done func() bool) bool {
+	for deadline := time.Now().Add(within); ; time.Sleep(pollEvery) {
+		if done() {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+	}
+}

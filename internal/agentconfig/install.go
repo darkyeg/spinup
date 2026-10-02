@@ -1,18 +1,11 @@
 package agentconfig
 
 import (
-	"errors"
-	"io/fs"
-	"os"
-
 	"github.com/darkyeg/spinup/internal/atomicfile"
 	"github.com/darkyeg/spinup/internal/source"
 )
 
-const (
-	backupSuffix = ".spinup-backup"
-	newFileMode  = 0o644
-)
+const newFileMode = 0o644
 
 // Install writes the managed files that differ, backing each existing one up once; it returns the paths written.
 func Install(src source.Source, homes Homes) ([]string, error) {
@@ -57,26 +50,5 @@ func Drifted(src source.Source, homes Homes) ([]string, error) {
 }
 
 func write(file File) error {
-	mode := os.FileMode(newFileMode)
-	if info, err := os.Stat(file.Path); err == nil {
-		mode = info.Mode().Perm()
-		if err := backUpOnce(file.Path, mode); err != nil {
-			return err
-		}
-	}
-	return atomicfile.Write(file.Path, []byte(file.Content), mode)
-}
-
-func backUpOnce(target string, mode os.FileMode) error {
-	backup := target + backupSuffix
-	if _, err := os.Stat(backup); err == nil {
-		return nil
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	original, err := os.ReadFile(target)
-	if err != nil {
-		return err
-	}
-	return atomicfile.Write(backup, original, mode)
+	return atomicfile.WriteManaged(file.Path, []byte(file.Content), newFileMode)
 }

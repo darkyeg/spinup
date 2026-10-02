@@ -67,7 +67,7 @@ func updateSelf(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if rel.Version == strings.TrimPrefix(version, "v") {
+	if !release.Newer(rel.Version, version) {
 		step("spinup %s is the latest", version)
 		return "", nil
 	}
@@ -103,7 +103,10 @@ func replaceRunningBinary(exe string, data []byte) error {
 	if err := os.Rename(exe, exe+".old"); err != nil {
 		return err
 	}
-	return os.Rename(exe+".new", exe)
+	if err := os.Rename(exe+".new", exe); err != nil {
+		return errors.Join(err, os.Rename(exe+".old", exe))
+	}
+	return nil
 }
 
 func removeReplacedBinary() {
@@ -116,7 +119,18 @@ func removeReplacedBinary() {
 func runUpdated(exe string) error {
 	cmd := exec.Command(exe, "update")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	return cmd.Run()
+	err := cmd.Run()
+	if exit := (*exec.ExitError)(nil); errors.As(err, &exit) {
+		return childExit{code: exit.ExitCode()}
+	}
+	return err
+}
+
+// childExit means the updated spinup ran and already printed why it failed.
+type childExit struct{ code int }
+
+func (e childExit) Error() string {
+	return fmt.Sprintf("the updated spinup exited with code %d", e.code)
 }
 
 // refreshService restarts the accounts service on this binary when the service still runs an older one.

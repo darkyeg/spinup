@@ -15,24 +15,44 @@ import (
 )
 
 // machineKeys returns the API key for the launcher: the hub makes the keys, a standby copies them from
-// the leader, and a machine that only uses the accounts keeps the API key it was given.
+// the leader, and a machine that only uses the accounts keeps the API key it was given. Keys given
+// explicitly replace the stored ones.
 func machineKeys(cfg config.Config, ts tailnet.Status, req serviceRequest) (string, error) {
-	if s, err := config.LoadSecrets(cfg); err == nil {
+	stored, loadErr := config.LoadSecrets(cfg)
+	have := loadErr == nil
+	if have && !req.replacesKeys(cfg.Hold) {
 		step("Using the keys in %s", cfg.SecretsPath())
-		return s.APIKey, nil
+		return stored.APIKey, nil
 	}
-	if !cfg.Hold.CanHold() {
-		key, err := orAsk(req.apiKey, "API key (on the hub: spinup keys): ", "API key")
-		if err != nil {
-			return "", err
-		}
-		return key, config.SaveSecrets(cfg, config.Secrets{APIKey: key})
-	}
-	s, err := newSecrets(cfg, ts, req.password)
+	s, err := obtainSecrets(cfg, ts, req)
 	if err != nil {
 		return "", err
 	}
-	return s.APIKey, config.SaveSecrets(cfg, s)
+	if err := config.SaveSecrets(cfg, s); err != nil {
+		return "", err
+	}
+	if have {
+		step("Updated the keys in %s", cfg.SecretsPath())
+	}
+	return s.APIKey, nil
+}
+
+func (r serviceRequest) replacesKeys(h config.Hold) bool {
+	switch h {
+	case config.HoldNever:
+		return r.apiKey != ""
+	case config.HoldStandby:
+		return r.password != ""
+	}
+	return false
+}
+
+func obtainSecrets(cfg config.Config, ts tailnet.Status, req serviceRequest) (config.Secrets, error) {
+	if cfg.Hold.CanHold() {
+		return newSecrets(cfg, ts, req.password)
+	}
+	key, err := orAsk(req.apiKey, "API key (on the hub: spinup keys): ", "API key")
+	return config.Secrets{APIKey: key}, err
 }
 
 func newSecrets(cfg config.Config, ts tailnet.Status, password string) (config.Secrets, error) {

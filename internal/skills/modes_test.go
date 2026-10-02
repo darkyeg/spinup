@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/darkyeg/spinup/internal/atomicfile"
 )
 
 func TestOverrideSettings(t *testing.T) {
@@ -106,5 +108,22 @@ func TestApplyModesKeepsEditedCodexPolicy(t *testing.T) {
 	}
 	if _, err := os.Stat(policy); err != nil {
 		t.Fatal("edited policy was removed")
+	}
+}
+
+func TestWritingOverridesBacksUpTheUsersSettingsOnce(t *testing.T) {
+	f := newFixture(t, sampleManifest)
+	settings := filepath.Join(f.paths.claude, "settings.json")
+	write(t, settings, `{"theme": "dark"}`)
+
+	for _, manual := range [][]string{{"keep"}, {}} {
+		if err := f.paths.applyModes([]string{"keep"}, manual); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	backup, err := os.ReadFile(settings + atomicfile.BackupSuffix)
+	if err != nil || string(backup) != `{"theme": "dark"}` {
+		t.Fatalf("backup = %q, %v", backup, err)
 	}
 }

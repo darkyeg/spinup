@@ -60,7 +60,18 @@ func Setup(ctx context.Context, name string) error {
 		st, _ = cli.Status(ctx)
 	}
 	fmt.Printf("==> Tailscale up: %s %s\n", st.Self.Name, st.Self.IP)
+	if note := hostnameNote(name, st.Self.Name); note != "" {
+		fmt.Println("==> " + note)
+	}
 	return nil
+}
+
+func hostnameNote(wanted, actual string) string {
+	if wanted == "" || wanted == actual {
+		return ""
+	}
+	return fmt.Sprintf("Tailscale named this machine %s, not %s: another device probably has that name. "+
+		"Other machines must use %s; to rename it, remove the other device in the Tailscale admin console and re-run setup.", actual, wanted, actual)
 }
 
 func ensureInstalled(ctx context.Context) error {

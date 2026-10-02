@@ -4,7 +4,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/darkyeg/spinup/internal/api"
 	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
@@ -65,5 +67,32 @@ func TestTailscaleProblem(t *testing.T) {
 				t.Errorf("the message prints a nil error: %v", err)
 			}
 		})
+	}
+}
+
+func TestAMachineReachesTheAccountsOnlyThroughAProvenLeader(t *testing.T) {
+	cases := []struct {
+		name   string
+		report api.Report
+		want   bool
+	}{
+		{"no leader", api.Report{}, false},
+		{"leader known but not proven reachable", api.Report{Leader: "hub"}, false},
+		{"leader with an address", api.Report{Leader: "hub", LeaderAddr: "100.1.1.1:8317"}, true},
+	}
+	for _, c := range cases {
+		if got := reachesLeader(c.report); got != c.want {
+			t.Errorf("%s: got %v", c.name, got)
+		}
+	}
+}
+
+func TestPollUntilStopsAsSoonAsTheConditionHolds(t *testing.T) {
+	calls := 0
+	if !pollUntil(time.Minute, func() bool { calls++; return calls == 2 }) || calls != 2 {
+		t.Fatalf("calls = %d", calls)
+	}
+	if pollUntil(0, func() bool { return false }) {
+		t.Fatal("a false condition cannot succeed")
 	}
 }

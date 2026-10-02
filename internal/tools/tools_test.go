@@ -1,9 +1,12 @@
 package tools
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/darkyeg/spinup/internal/source"
@@ -85,5 +88,41 @@ func TestLoadReadsToolsJSON(t *testing.T) {
 	want := []Tool{{Name: "fd", Check: []string{"fd", "fdfind"}, Apt: "fd-find", Nix: "fd"}}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("Load = %+v, %v", got, err)
+	}
+}
+
+func TestInstallUpdatesAptOnceAndChoosesAfterEachInstall(t *testing.T) {
+	npmOnPath := false
+	var calls []string
+	s := &session{
+		platform: platform{os: "linux", which: func(program string) bool {
+			return program == "apt-get" || (program == "npm" && npmOnPath)
+		}},
+		run: func(_ context.Context, asRoot bool, program string, args ...string) error {
+			calls = append(calls, fmt.Sprintf("%v %s %s", asRoot, program, strings.Join(args, " ")))
+			return nil
+		},
+		refreshPath: func() { npmOnPath = true },
+	}
+	node := Tool{Name: "node", Apt: "nodejs npm"}
+	git := Tool{Name: "git", Apt: "git"}
+	codex := Tool{Name: "codex", Npm: "@openai/codex"}
+
+	var outcomes []Outcome
+	for _, tool := range []Tool{codex, node, git, codex} {
+		outcomes = append(outcomes, s.install(context.Background(), tool).Outcome)
+	}
+
+	wantCalls := []string{
+		"true apt-get update",
+		"true apt-get install -y nodejs npm",
+		"true apt-get install -y git",
+		"false npm install -g @openai/codex",
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Errorf("calls = %q", calls)
+	}
+	if want := []Outcome{NoInstaller, Installed, Installed, Installed}; !reflect.DeepEqual(outcomes, want) {
+		t.Errorf("outcomes = %v", outcomes)
 	}
 }

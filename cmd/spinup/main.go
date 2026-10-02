@@ -4,6 +4,7 @@ package main
 
 import (
 	"cmp"
+	"errors"
 	"os"
 
 	"github.com/alecthomas/kong"
@@ -58,5 +59,9 @@ func main() {
 		}),
 		kong.Vars{"version": "spinup " + version},
 	)
-	ctx.FatalIfErrorf(ctx.Run())
+	err := ctx.Run()
+	if child := (childExit{}); errors.As(err, &child) {
+		os.Exit(child.code)
+	}
+	ctx.FatalIfErrorf(err)
 }

@@ -9,7 +9,6 @@ import (
 
 	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/shell"
-	"github.com/darkyeg/spinup/internal/source"
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
@@ -17,8 +16,8 @@ type setupCmd struct {
 	Name     string `arg:"" optional:"" help:"This machine's name on your tailnet; other machines reach it by it (asked when omitted)."`
 	Hub      bool   `xor:"hold" help:"This machine normally holds the accounts. One hub per tailnet."`
 	Standby  bool   `xor:"hold" help:"This machine takes the accounts while the hub is off."`
-	Password string `env:"SPINUP_PASSWORD" placeholder:"PASSWORD" help:"The dashboard password, for --standby (or $SPINUP_PASSWORD; asked when omitted; on the hub: spinup keys)."`
-	APIKey   string `name:"api-key" env:"SPINUP_API_KEY" placeholder:"KEY" help:"The API key, for a machine that only uses the accounts (or $SPINUP_API_KEY; asked when omitted)."`
+	Password string `env:"SPINUP_PASSWORD" placeholder:"PASSWORD" help:"The dashboard password, for --standby (asked when omitted; on the hub: spinup keys)."`
+	APIKey   string `name:"api-key" env:"SPINUP_API_KEY" placeholder:"KEY" help:"The API key, for a machine that only uses the accounts (asked when omitted; on the hub: spinup keys)."`
 }
 
 func (setupCmd) Help() string {
@@ -63,7 +62,7 @@ func (c setupCmd) Run() error {
 		}
 	}
 	fmt.Println()
-	printAddresses(name)
+	printAddresses(ctx, name)
 	fmt.Println()
 	if err := (doctorCmd{}).Run(); err != nil {
 		return err
@@ -130,20 +129,12 @@ func pullCheckouts(ctx context.Context) {
 	}
 }
 
-func printAddresses(name string) {
+func printAddresses(ctx context.Context, name string) {
+	if st, err := (tailnet.CLI{}).Status(ctx); err == nil && st.Self.Name != "" {
+		name = st.Self.Name
+	}
 	fmt.Printf("This machine is %s on your tailnet. From your other machines:\n", name)
 	fmt.Printf("  any service:  http://%s:<port>\n", name)
 	fmt.Printf("  ssh:          ssh <user>@%s\n", name)
 	fmt.Println("  all machines: spinup machines")
-}
-
-// repoData is the spinup data to apply: the checkout setup recorded, one found nearby, or the built-in copy.
-func repoData() source.Source {
-	cfg, _ := config.Load()
-	return source.Find(cfg.Repo)
-}
-
-func interactive() bool {
-	info, err := os.Stdin.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }

@@ -70,8 +70,9 @@ func locateTable(lines []string, table string) (lineSpan, bool) {
 	if table == "" {
 		return lineSpan{0, nextHeader(lines, 0)}, true
 	}
+	top := topLevel(lines)
 	for i, line := range lines {
-		if strings.TrimSpace(line) == "["+table+"]" {
+		if top[i] && strings.TrimSpace(line) == "["+table+"]" {
 			return lineSpan{i + 1, nextHeader(lines, i+1)}, true
 		}
 	}
@@ -79,8 +80,9 @@ func locateTable(lines []string, table string) (lineSpan, bool) {
 }
 
 func nextHeader(lines []string, from int) int {
+	top := topLevel(lines)
 	for i := from; i < len(lines); i++ {
-		if tableHeader.MatchString(lines[i]) {
+		if top[i] && tableHeader.MatchString(lines[i]) {
 			return i
 		}
 	}
@@ -89,8 +91,9 @@ func nextHeader(lines []string, from int) int {
 
 func keyLine(lines []string, span lineSpan, key string) int {
 	assignment := regexp.MustCompile(`^\s*` + regexp.QuoteMeta(key) + `\s*=`)
+	top := topLevel(lines)
 	for i := span.start; i < span.end; i++ {
-		if assignment.MatchString(lines[i]) {
+		if top[i] && assignment.MatchString(lines[i]) {
 			return i
 		}
 	}

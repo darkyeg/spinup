@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,7 +14,6 @@ import (
 	"github.com/darkyeg/spinup/internal/agentconfig"
 	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/doctor"
-	"github.com/darkyeg/spinup/internal/host"
 	"github.com/darkyeg/spinup/internal/proxy"
 	"github.com/darkyeg/spinup/internal/release"
 	"github.com/darkyeg/spinup/internal/shell"
@@ -112,29 +111,27 @@ func accountsSection(ctx context.Context) doctor.Section {
 	}
 	if cfg.Hold.CanHold() {
 		svc.ProxyVersion = proxy.InstalledVersion(cfg)
+		svc.LoginOnly = runtime.GOOS == "darwin"
 		svc.ProxyLatest = latestVersion(ctx, proxy.Project)
 	}
 	return doctor.Accounts(svc, cfg.Port)
 }
 
 func agentsSection(repo source.Source) doctor.Section {
-	list, err := skillManager(repo).List()
+	manager := skillManager(repo)
+	list, err := manager.List()
 	if err != nil {
 		return doctor.Section{Title: "Agents", Checks: []doctor.Check{{Level: doctor.Fail, Label: "skills: " + err.Error()}}}
 	}
-	var notInstalled, listed []string
+	var notInstalled []string
 	for _, s := range list {
-		listed = append(listed, s.Name)
 		if !s.Installed {
 			notInstalled = append(notInstalled, s.Name)
 		}
 	}
-	var unlisted []string
-	entries, _ := os.ReadDir(host.SkillsDir())
-	for _, e := range entries {
-		if e.IsDir() && !slices.Contains(listed, e.Name()) {
-			unlisted = append(unlisted, e.Name())
-		}
+	unlisted, err := manager.Unlisted()
+	if err != nil {
+		return doctor.Section{Title: "Agents", Checks: []doctor.Check{{Level: doctor.Fail, Label: "skills: " + err.Error()}}}
 	}
 	drifted, err := agentconfig.Drifted(repo, agentconfig.HostHomes())
 	if err != nil {

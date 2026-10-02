@@ -11,3 +11,28 @@ func TestChecksumFor(t *testing.T) {
 		}
 	}
 }
+
+func TestNewer(t *testing.T) {
+	cases := []struct {
+		latest, current string
+		want            bool
+	}{
+		{"1.2.0", "1.1.9", true},
+		{"v1.10.0", "1.9.0", true},
+		{"1.0.1", "1.0", true},
+		{"1.0", "1.0.0", false},
+		{"1.2.0", "1.2.0", false},
+		{"1.1.0", "1.2.0", false},
+		{"0.9.0", "v1.0.0", false},
+		{"2.0.0", "2.0.0-rc1", false},
+		{"2.0.1", "2.0.0+build5", true},
+		{"latest", "1.0.0", false},
+		{"1.0.0", "dev", false},
+		{"", "", false},
+	}
+	for _, c := range cases {
+		if got := Newer(c.latest, c.current); got != c.want {
+			t.Errorf("Newer(%q, %q) = %v, want %v", c.latest, c.current, got, c.want)
+		}
+	}
+}

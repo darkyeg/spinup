@@ -10,7 +10,7 @@
     {"name": "bun", "check": ["bun"], "winget": "Oven-sh.Bun", "brew": "oven-sh/bun/bun", "script": "curl -fsSL https://bun.sh/install | bash", "nix": "bun"},
     {"name": "go", "check": ["go"], "winget": "GoLang.Go", "brew": "go", "apt": "golang-go", "nix": "go"},
     {"name": "uv", "check": ["uv"], "winget": "astral-sh.uv", "brew": "uv", "script": "curl -LsSf https://astral.sh/uv/install.sh | sh", "nix": "uv"},
-    {"name": "rust", "check": ["cargo"], "winget": "Rustlang.Rustup", "brew": "rustup", "script": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y", "nix": "rustup"},
+    {"name": "rust", "check": ["cargo"], "winget": "Rustlang.Rustup", "script": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y", "nix": "rustup"},
     {"name": "claude", "check": ["claude"], "powershell": "irm https://claude.ai/install.ps1 | iex", "script": "curl -fsSL https://claude.ai/install.sh | bash", "nix": "claude-code"},
     {"name": "codex", "check": ["codex"], "npm": "@openai/codex", "nix": "codex"}
   ]

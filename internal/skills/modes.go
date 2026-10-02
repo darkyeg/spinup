@@ -17,6 +17,7 @@ const (
 	userInvocableOnly  = "user-invocable-only"
 	codexManualPolicy  = "policy:\n  allow_implicit_invocation: false\n"
 	settingsFile       = "settings.json"
+	settingsMode       = 0o644
 	codexPolicyDirName = "agents"
 	codexPolicyFile    = "openai.yaml"
 )
@@ -82,7 +83,7 @@ func (p paths) writeClaudeOverrides(keep, manual []string) error {
 	if !changed {
 		return nil
 	}
-	return atomicfile.Write(path, updated, 0o644)
+	return atomicfile.WriteManaged(path, updated, settingsMode)
 }
 
 func (p paths) writeCodexPolicy(name string, manual bool) error {

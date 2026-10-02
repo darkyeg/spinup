@@ -11,6 +11,7 @@ import (
 	"text/template"
 
 	"github.com/darkyeg/spinup/internal/atomicfile"
+	"github.com/darkyeg/spinup/internal/host"
 )
 
 var (
@@ -35,16 +36,12 @@ func writeLauncher(port int, apiKey string) error {
 	if err := checkLauncherKey(apiKey); err != nil {
 		return err
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
 	text, name, perm := ccpUnix, "ccp", os.FileMode(0o700)
 	if runtime.GOOS == "windows" {
 		text, name, perm = ccpWindows, "ccp.cmd", 0o600
 	}
 	var out bytes.Buffer
-	err = template.Must(template.New(name).Parse(text)).Execute(&out, map[string]any{"Port": port, "APIKey": apiKey})
+	err := template.Must(template.New(name).Parse(text)).Execute(&out, map[string]any{"Port": port, "APIKey": apiKey})
 	if err != nil {
 		return err
 	}
@@ -52,5 +49,11 @@ func writeLauncher(port int, apiKey string) error {
 	if runtime.GOOS == "windows" {
 		content = bytes.ReplaceAll(content, []byte("\n"), []byte("\r\n"))
 	}
-	return atomicfile.Write(filepath.Join(home, ".local", "bin", name), content, perm)
+	if err := atomicfile.Write(filepath.Join(host.BinDir(), name), content, perm); err != nil {
+		return err
+	}
+	if err := ensureOnPath(host.BinDir()); err != nil {
+		step("Couldn't put %s on your PATH (%v); add it yourself so `ccp` is found", host.BinDir(), err)
+	}
+	return nil
 }

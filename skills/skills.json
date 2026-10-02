@@ -1,5 +1,5 @@
 {
-  "_comment": "Global skills for Claude Code + Codex on every machine (`spinup.py skills`). Keep this list small: every auto-triggered skill's description costs tokens in every session. Stack-specific skills go per repo (per-repo.json). `manual`: installed, but only run when called (/name, $name). Edit with `spinup.py skills add|remove|manual|auto`.",
+  "_comment": "Global skills for Claude Code + Codex on every machine (`spinup skills`). Keep this list small: every auto-triggered skill's description costs tokens in every session. Stack-specific skills go per repo (per-repo.json). `manual`: installed, but only run when called (/name, $name). Edit with `spinup skills add|remove|manual|auto`.",
   "agents": ["claude-code", "codex"],
   "manual": [],
   "sources": {

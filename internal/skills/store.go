@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -80,10 +81,15 @@ func (p paths) publish(ctx context.Context, skill ownSkill) error {
 	if err := os.CopyFS(dest, skill.files); err != nil {
 		return err
 	}
-	return linkDir(ctx, filepath.Join(p.claudeSkills(), skill.name), dest)
+	return p.linkDir(ctx, filepath.Join(p.claudeSkills(), skill.name), dest)
 }
 
-func linkDir(ctx context.Context, link, target string) error {
+func (p paths) linkDir(ctx context.Context, link, target string) error {
+	if info, err := os.Lstat(link); err == nil && !isLink(link) && info.IsDir() {
+		if err := p.parkAside(link, filepath.Base(link)); err != nil {
+			return err
+		}
+	}
 	if err := removeAny(link); err != nil {
 		return err
 	}
@@ -170,4 +176,20 @@ func (p paths) park(names []string) error {
 		}
 	}
 	return nil
+}
+
+func (p paths) parkAside(dir, name string) error {
+	if err := os.MkdirAll(p.parked, 0o755); err != nil {
+		return err
+	}
+	target := filepath.Join(p.parked, name)
+	for n := 1; taken(target); n++ {
+		target = filepath.Join(p.parked, fmt.Sprintf("%s-%d", name, n))
+	}
+	return os.Rename(dir, target)
+}
+
+func taken(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
 }

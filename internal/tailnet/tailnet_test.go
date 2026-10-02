@@ -116,3 +116,23 @@ func TestParsePing(t *testing.T) {
 		})
 	}
 }
+
+func TestHostnameNoteSaysWhenTheNameDidNotTake(t *testing.T) {
+	if got := hostnameNote("office-pc", "office-pc"); got != "" {
+		t.Errorf("same name: %q", got)
+	}
+	if got := hostnameNote("", "anything"); got != "" {
+		t.Errorf("no name asked for: %q", got)
+	}
+	if got := hostnameNote("office-pc", "office-pc-1"); !strings.Contains(got, "office-pc-1") {
+		t.Errorf("renamed: %q", got)
+	}
+}
+
+func TestWingetNothingToUpgradeIsNotAFailure(t *testing.T) {
+	for code, want := range map[int]bool{0: false, 1: false, 0x8A15002B: true, -1978335189: true} {
+		if got := wingetNothingToUpgrade(code); got != want {
+			t.Errorf("exit %d: got %v", code, got)
+		}
+	}
+}

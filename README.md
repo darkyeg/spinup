@@ -15,6 +15,8 @@ spinup fixes that:
 
 One Go binary, no dependencies. Windows, macOS and Linux. Every command is safe to re-run; re-running is how you repair.
 
+On a Mac the service runs as a LaunchAgent, so a hub or standby Mac holds the accounts only while you are logged in; make an always-on Linux or Windows machine the hub.
+
 ## Quick start
 
 **1. Install spinup** on each machine:
@@ -96,7 +98,7 @@ Fork the repo and clone your fork; spinup uses the checkout it runs in (or `SPIN
 ## Security
 
 - **Nothing faces the internet.** The accounts are reachable only on your tailnet (a firewall rule on Windows limits the port to Tailscale addresses), and Tailscale traffic is end-to-end encrypted.
-- **Keys stay on your machines** (`secrets.json`, never committed). Machines prove they know the keys before any key or login is sent to them.
+- **Keys stay on your machines** (`secrets.json`, never committed): every machine keeps the API key, and a hub or standby also keeps the dashboard password. Machines prove they know the keys before any key or login is sent to them.
 - **Downloads are checksum-verified**: spinup's own updates and CLIProxyAPI's.
 - Turn on 2FA for **GitHub** and for your **Tailscale** login, and disable Tailscale key expiry for your machines (`doctor` warns you).
 - Found a problem? See [SECURITY.md](SECURITY.md).

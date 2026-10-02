@@ -52,27 +52,54 @@ func installed(t Tool, p platform) bool {
 	return false
 }
 
+const aptGet = "apt-get"
+
+type run func(ctx context.Context, asRoot bool, program string, args ...string) error
+
+// session installs tools one after another: each choice is made after the previous install has put
+// its tools on PATH, and apt's package index is refreshed once, before the first apt install.
+type session struct {
+	platform     platform
+	run          run
+	refreshPath  func()
+	indexUpdated bool
+}
+
+func hostSession() *session {
+	return &session{platform: hostPlatform(), run: runProgram, refreshPath: shell.RefreshPath}
+}
+
+func runProgram(ctx context.Context, asRoot bool, program string, args ...string) error {
+	if asRoot {
+		return shell.AsRoot(ctx, program, args...)
+	}
+	return shell.Run(ctx, program, args...)
+}
+
 // Install runs each tool's installer in this terminal and carries on after a failure.
 func Install(ctx context.Context, missing []Tool) []Result {
-	p := hostPlatform()
+	s := hostSession()
 	results := make([]Result, 0, len(missing))
 	for _, t := range missing {
-		results = append(results, installOne(ctx, t, p))
+		results = append(results, s.install(ctx, t))
 	}
 	return results
 }
 
-func installOne(ctx context.Context, t Tool, p platform) Result {
-	in, ok := choose(t, p)
+func (s *session) install(ctx context.Context, t Tool) Result {
+	in, ok := choose(t, s.platform)
 	if !ok {
 		return Result{Tool: t, Outcome: NoInstaller}
 	}
-	run := shell.Run
-	if in.asRoot {
-		run = shell.AsRoot
+	if in.program == aptGet && !s.indexUpdated {
+		if err := s.run(ctx, true, aptGet, "update"); err != nil {
+			return Result{Tool: t, Outcome: Failed, Err: err}
+		}
+		s.indexUpdated = true
 	}
-	if err := run(ctx, in.program, in.args...); err != nil {
+	if err := s.run(ctx, in.asRoot, in.program, in.args...); err != nil {
 		return Result{Tool: t, Outcome: Failed, Err: err}
 	}
+	s.refreshPath()
 	return Result{Tool: t, Outcome: Installed}
 }

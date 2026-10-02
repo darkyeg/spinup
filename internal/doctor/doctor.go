@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/darkyeg/spinup/internal/api"
+	"github.com/darkyeg/spinup/internal/release"
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
@@ -107,6 +108,8 @@ type Service struct {
 	Problem   string      // why it doesn't answer
 	// ProxyVersion and ProxyLatest are empty when unknown.
 	ProxyVersion, ProxyLatest string
+	// LoginOnly is set when the service runs only while the user is logged in (a macOS LaunchAgent).
+	LoginOnly bool
 }
 
 // Accounts checks the accounts service.
@@ -135,6 +138,10 @@ func Accounts(svc Service, port int) Section {
 	}
 	if r.Leading {
 		s.Checks = append(s.Checks, loginsCheck(r, port))
+	}
+	if svc.LoginOnly {
+		s.Checks = append(s.Checks, warn("macOS runs the service only while you are logged in, so this machine holds the accounts only then",
+			"make an always-on Linux or Windows machine the hub or a standby, or stay logged in"))
 	}
 	if svc.ProxyLatest != "" && svc.ProxyVersion != "" && svc.ProxyLatest != svc.ProxyVersion {
 		s.Checks = append(s.Checks, warn(fmt.Sprintf("CLIProxyAPI %s, latest is %s", svc.ProxyVersion, svc.ProxyLatest), "spinup update"))
@@ -204,7 +211,7 @@ func Repos(checkouts []Checkout) Section {
 
 // Update checks whether a newer spinup is out.
 func Update(running, latest string) Section {
-	if latest == "" || running == "dev" || running == "" || strings.TrimPrefix(running, "v") == latest {
+	if !release.Newer(latest, running) {
 		return Section{Title: "spinup", Checks: []Check{ok("spinup " + running)}}
 	}
 	return Section{Title: "spinup", Checks: []Check{warn(fmt.Sprintf("spinup %s, latest is %s", running, latest), "spinup update")}}

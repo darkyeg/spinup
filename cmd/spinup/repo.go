@@ -77,10 +77,3 @@ func actionNames(actions []project.Action) []string {
 	}
 	return names
 }
-
-func orNone(s, none string) string {
-	if s == "" {
-		return none
-	}
-	return s
-}

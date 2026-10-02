@@ -27,10 +27,11 @@ func (uninstallCmd) Run() error {
 		return err
 	}
 	step("Removed spinup from this machine. The logins and keys stay (%s, %s).", cfg.AuthDir, cfg.SecretsPath())
-	if cfg.Hold == config.HoldHub {
-		step("To run the proxy the spinup.py way again: spinup.py hub")
+	if err := os.Remove(config.Path()); err != nil {
+		return err
 	}
-	return os.Remove(config.Path())
+	step("To bring this machine back: spinup setup <name>")
+	return nil
 }
 
 func handOffBeforeLeaving() {

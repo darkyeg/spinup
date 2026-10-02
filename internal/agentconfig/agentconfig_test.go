@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/darkyeg/spinup/internal/atomicfile"
 	"github.com/darkyeg/spinup/internal/source"
 )
 
@@ -197,7 +198,7 @@ func TestInstallKeepsUserSettingsAndBacksUpOnce(t *testing.T) {
 	if _, err := Install(src, homes); err != nil {
 		t.Fatal(err)
 	}
-	if got := get(t, settings+backupSuffix); got != `{"hooks": {}, "outputStyle": "Verbose"}` {
+	if got := get(t, settings+atomicfile.BackupSuffix); got != `{"hooks": {}, "outputStyle": "Verbose"}` {
 		t.Fatalf("backup was overwritten: %q", got)
 	}
 }
@@ -242,5 +243,27 @@ func TestRepoDataPlansOnAnEmptyMachine(t *testing.T) {
 	files, err := Plan(source.At(root), Homes{Claude: filepath.Join(home, "c"), Codex: filepath.Join(home, "x")})
 	if err != nil || len(files) < 5 {
 		t.Fatalf("plan: %d files, %v", len(files), err)
+	}
+}
+
+func TestRootKeyIsNeverInsertedInsideAMultiLineArray(t *testing.T) {
+	current := "matrix = [\n  [1, 2],\n  [3, 4],\n]\nnames = [\n  \"[agents]\",\n]\n\n[agents]\nlevel = \"low\"\n"
+
+	got, err := applyCodexSettings(current, "model = \"m\"\n[agents]\nlevel = \"high\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := "matrix = [\n  [1, 2],\n  [3, 4],\n]\nnames = [\n  \"[agents]\",\n]\nmodel = \"m\"\n\n[agents]\nlevel = \"high\"\n"
+	if got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestTopLevelSkipsLinesInsideBrackets(t *testing.T) {
+	lines := []string{"a = [", "  [1],", "]", "[t]", "b = { x = [", "  1 ] }", "# [c]", "c = \"]\""}
+	want := []bool{true, false, false, true, true, false, true, true}
+	if got := topLevel(lines); !slices.Equal(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
 	}
 }
