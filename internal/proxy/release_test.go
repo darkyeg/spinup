@@ -22,16 +22,6 @@ func TestRenderFillsEveryPlaceholder(t *testing.T) {
 	}
 }
 
-func TestChecksumFor(t *testing.T) {
-	sums := "abc  CLIProxyAPI_1_linux_amd64.tar.gz\ndef *CLIProxyAPI_1_windows_amd64.zip\n"
-	if checksumFor(sums, "CLIProxyAPI_1_windows_amd64.zip") != "def" {
-		t.Error("binary-mode line not parsed")
-	}
-	if checksumFor(sums, "missing") != "" {
-		t.Error("missing asset must have no checksum")
-	}
-}
-
 func TestRefused(t *testing.T) {
 	if !(LoginState{Unavailable: true, StatusMessage: "refresh failed: invalid_grant"}).Refused() {
 		t.Error("invalid_grant is a refused token")

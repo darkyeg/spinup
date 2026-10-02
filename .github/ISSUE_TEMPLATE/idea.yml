@@ -1,0 +1,8 @@
+name: Idea
+description: Something spinup should do
+body:
+  - type: textarea
+    attributes:
+      label: What you want to do, and what gets in the way today
+    validations:
+      required: true

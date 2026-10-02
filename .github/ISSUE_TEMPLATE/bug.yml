@@ -1,0 +1,19 @@
+name: Bug
+description: Something doesn't work
+body:
+  - type: textarea
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: spinup doctor
+      description: Paste the output of `spinup doctor` (it shows no keys). Remove machine names if you like.
+      render: text
+  - type: input
+    attributes:
+      label: spinup --version, and OS
+      placeholder: spinup v0.1.0, Windows 11
+    validations:
+      required: true

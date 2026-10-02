@@ -1,9 +1,18 @@
-// Package spinup holds files shared by the Python CLI and the Go service.
+// Package spinup is the data spinup applies to every machine; the binary carries a copy.
 package spinup
 
-import _ "embed"
+import (
+	"embed"
+	"io/fs"
+)
 
-// ProxyConfigTemplate is proxy/config.template.yaml, with {{HOST}}, {{PORT}}, {{API_KEY}} and
+//go:embed agents tools.json skills/skills.json skills/per-repo.json proxy/config.template.yaml
+var files embed.FS
+
+// Files is the repo's data as built into this binary.
+func Files() fs.FS { return files }
+
+// ProxyConfigTemplate is proxy/config.template.yaml, with {{HOST}}, {{PORT}}, {{AUTH_DIR}}, {{API_KEY}} and
 // {{SECRET_KEY}} placeholders.
 //
 //go:embed proxy/config.template.yaml

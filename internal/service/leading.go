@@ -91,6 +91,23 @@ func (m *Machine) launchProxy(ctx context.Context) error {
 	return nil
 }
 
+// restartProxy runs the proxy's new binary; if it won't start, this machine stops holding and the usual rules decide who leads.
+func (m *Machine) restartProxy(ctx context.Context) error {
+	m.transition.Lock()
+	defer m.transition.Unlock()
+	if !m.ledger.view(time.Now()).Leading {
+		return nil
+	}
+	m.o.Proxy.Stop(m.quiet)
+	if err := m.launchProxy(ctx); err != nil {
+		m.ledger.stopLeading()
+		m.save()
+		return fmt.Errorf("the updated proxy didn't start: %w", err)
+	}
+	m.log.Printf("restarted the proxy")
+	return nil
+}
+
 // stepDown stops at once: another machine runs the accounts, so waiting for quiet would only let both refresh.
 func (m *Machine) stepDown(ctx context.Context, leader string, epoch int64, ts tailnet.Status) {
 	m.transition.Lock()

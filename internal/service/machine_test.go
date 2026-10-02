@@ -499,6 +499,26 @@ func TestStoppingOverTheAPIHandsTheAccountsOver(t *testing.T) {
 	}
 }
 
+func TestRestartingTheProxyKeepsTheAccountsHere(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	if got := post(hub.peerAPI, api.PathRestart, "m"); got != http.StatusNotFound {
+		t.Errorf("restart from the tailnet: %d, want 404", got)
+	}
+	if got := post(hub.front, api.PathRestart, "m"); got != http.StatusOK {
+		t.Fatalf("restart: %d, want 200", got)
+	}
+	if !hub.proxy.Running() || !hub.m.Report().Leading {
+		t.Fatal("after a restart the hub must still run the proxy and hold the accounts")
+	}
+	tn.shutDown(hub)
+	if most := tn.most.Load(); most != 1 {
+		t.Fatalf("%d proxies ran at once; never more than 1", most)
+	}
+}
+
 func TestThePeerAPINeedsTheKey(t *testing.T) {
 	tn := newTestTailnet(t)
 	hub := tn.add("hub", config.HoldHub)

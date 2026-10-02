@@ -42,6 +42,7 @@ func (m *Machine) routes(a audience) http.Handler {
 		// Only the user at this machine may force it to lead or stop it.
 		mux.HandleFunc("POST "+api.PathTakeover, m.keyed(m.holding(m.serveTakeover)))
 		mux.HandleFunc("POST "+api.PathStop, m.keyed(m.holding(m.serveStop)))
+		mux.HandleFunc("POST "+api.PathRestart, m.keyed(m.holding(m.serveRestart)))
 	case onTailnet:
 		mux.HandleFunc("GET "+api.PathState, m.keyed(m.serveState))
 	}
@@ -164,6 +165,16 @@ func (m *Machine) serveStop(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, okBody)
 	_ = http.NewResponseController(w).Flush()
 	m.stopRun()
+}
+
+func (m *Machine) serveRestart(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), handoffTimeout)
+	defer cancel()
+	if err := m.restartProxy(ctx); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, okBody)
 }
 
 var okBody = map[string]bool{"ok": true}

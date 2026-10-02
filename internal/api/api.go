@@ -25,6 +25,7 @@ const (
 	PathHandoff  = "/spinup/handoff"  // the user moves the accounts
 	PathTakeover = "/spinup/takeover" // the user makes this machine lead; localhost only
 	PathStop     = "/spinup/stop"     // the user stops this service gracefully; localhost only
+	PathRestart  = "/spinup/restart"  // restart the proxy after an update, if this machine holds the accounts; localhost only
 )
 
 // Leader is public: it names who holds the accounts, with proofs of the secrets its machine knows.

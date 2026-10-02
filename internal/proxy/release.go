@@ -6,12 +6,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -20,64 +16,37 @@ import (
 	"time"
 
 	"github.com/darkyeg/spinup/internal/config"
+	"github.com/darkyeg/spinup/internal/release"
 )
 
-const latestReleaseAPI = "https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest"
-
-type Release struct {
-	Version string
-	Assets  map[string]string // file name to download URL
-}
+// Project is CLIProxyAPI's GitHub project.
+const Project = "router-for-me/CLIProxyAPI"
 
 func Installed(c config.Config) bool {
 	_, err := os.Stat(c.ProxyExe())
 	return err == nil
 }
 
-func LatestRelease(ctx context.Context) (Release, error) {
-	var raw struct {
-		TagName string `json:"tag_name"`
-		Assets  []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
-		} `json:"assets"`
-	}
-	data, err := download(ctx, latestReleaseAPI)
+// InstalledVersion is the version Install last put in place, or "" when unknown.
+func InstalledVersion(c config.Config) string {
+	data, err := os.ReadFile(versionFile(c))
 	if err != nil {
-		return Release{}, err
+		return ""
 	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return Release{}, err
-	}
-	rel := Release{Version: strings.TrimPrefix(raw.TagName, "v"), Assets: map[string]string{}}
-	for _, a := range raw.Assets {
-		rel.Assets[a.Name] = a.URL
-	}
-	return rel, nil
+	return strings.TrimSpace(string(data))
 }
 
-// Install puts rel's binary in the proxy folder after checking it against the release's
-// checksums.txt. The old binary is renamed aside, since Windows can't overwrite a running one.
-func Install(ctx context.Context, c config.Config, rel Release) error {
+func versionFile(c config.Config) string { return filepath.Join(c.ProxyDir, "version.txt") }
+
+// Install puts rel's binary in the proxy folder. The old binary is renamed aside, since Windows can't overwrite a running one.
+func Install(ctx context.Context, c config.Config, rel release.Release) error {
 	archive, err := assetName(rel.Version)
 	if err != nil {
 		return err
 	}
-	url, ok := rel.Assets[archive]
-	if !ok {
-		return fmt.Errorf("release %s has no %s", rel.Version, archive)
-	}
-	data, err := download(ctx, url)
+	data, err := rel.Fetch(ctx, archive)
 	if err != nil {
 		return err
-	}
-	sums, err := download(ctx, rel.Assets["checksums.txt"])
-	if err != nil {
-		return fmt.Errorf("checksums.txt: %w", err)
-	}
-	sum := sha256.Sum256(data)
-	if checksumFor(string(sums), archive) != hex.EncodeToString(sum[:]) {
-		return fmt.Errorf("checksum mismatch for %s: refusing to install", archive)
 	}
 	exeName := filepath.Base(c.ProxyExe())
 	files, err := extract(archive, data, map[string]bool{exeName: true, "config.example.yaml": true, "README.md": true, "LICENSE": true})
@@ -98,7 +67,19 @@ func Install(ctx context.Context, c config.Config, rel Release) error {
 			return err
 		}
 	}
-	return replaceExe(c.ProxyExe(), files[exeName])
+	if err := replaceExe(c.ProxyExe(), files[exeName]); err != nil {
+		return err
+	}
+	removeOldExes(c.ProxyExe())
+	return os.WriteFile(versionFile(c), []byte(rel.Version+"\n"), 0o644)
+}
+
+// removeOldExes deletes binaries renamed aside by earlier installs; one still running stays until next time.
+func removeOldExes(exe string) {
+	old, _ := filepath.Glob(exe + ".old*")
+	for _, f := range old {
+		_ = os.Remove(f)
+	}
 }
 
 func replaceExe(exe string, content []byte) error {
@@ -123,16 +104,6 @@ func assetName(version string) (string, error) {
 		ext = "zip"
 	}
 	return fmt.Sprintf("CLIProxyAPI_%s_%s_%s.%s", version, runtime.GOOS, arch, ext), nil
-}
-
-func checksumFor(sums, name string) string {
-	for _, line := range strings.Split(sums, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == name {
-			return fields[0]
-		}
-	}
-	return ""
 }
 
 func extract(archive string, data []byte, keep map[string]bool) (map[string][]byte, error) {
@@ -187,26 +158,4 @@ func extractTarGz(data []byte, keep map[string]bool) (map[string][]byte, error) 
 			}
 		}
 	}
-}
-
-func download(ctx context.Context, url string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "spinup")
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" && strings.HasPrefix(url, "https://api.github.com/") {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: %s", url, resp.Status)
-	}
-	return io.ReadAll(resp.Body)
 }

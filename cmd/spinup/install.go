@@ -10,6 +10,7 @@ import (
 
 	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/proxy"
+	"github.com/darkyeg/spinup/internal/release"
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
@@ -109,7 +110,7 @@ func ensureProxy(cfg config.Config) error {
 		return nil
 	}
 	ctx := context.Background()
-	rel, err := proxy.LatestRelease(ctx)
+	rel, err := release.Latest(ctx, proxy.Project)
 	if err != nil {
 		return fmt.Errorf("find the latest CLIProxyAPI: %w", err)
 	}
