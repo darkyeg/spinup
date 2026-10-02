@@ -1,46 +1,62 @@
 # Set up a machine
 
-Steps for an agent setting up (or repairing) one machine. Each step ends on a check; move on only when the check passes. Run commands from the repo root. `$PY` is `py` on Windows, `python3` elsewhere.
+Steps for an agent setting up (or repairing) one machine. Each step ends on a check; move on only when the check passes.
 
-## 1. Identify the machine
+## 1. Name and hold
 
-**Ask the user for its name** (lowercase letters, digits, dashes); never copy a name from an example or from another machine. The name becomes its Tailscale name: every other machine reaches it as `<name>`, e.g. `http://<name>:8317`, at home or away. Role (**hub** holds the accounts and runs the proxy; there is one hub; everything else is a **client**), OS.
-Done when: you know the name and role. If the user didn't say and `spinup.py links` shows a hub already, it's a client.
+**Ask the user for the machine's name** (lowercase letters, digits, dashes); never copy a name from an example or from another machine. The name becomes its Tailscale name: every other machine reaches it as `<name>`, e.g. `http://<name>:8317`, at home or away.
 
-**Fast path:** after cloning (step 2's bootstrap), `$PY spinup.py setup <name>` (add `--hub` for the hub) pulls this repo, runs steps 2-4 in one go and ends with `doctor`. Then do steps 5-7.
+Ask what it **holds**:
 
-## 2. Base tools
+| Hold | Meaning | Flag |
+|---|---|---|
+| `never` | only uses the accounts | none |
+| `standby` | takes the accounts while the hub is off | `--standby` |
+| `hub` | holds the accounts whenever it is up; one per tailnet | `--hub` |
 
-Bootstrap by hand: git and Python 3.11+ (python.org build on Windows), then clone this repo. `$PY spinup.py packages` installs the rest of `packages.json` (Node, gh, rg, fd, jq, bun, go, uv, Rust, Claude Code, Codex). Open a new terminal afterwards, run `gh auth login`, and log in to `claude` and `codex` once.
-Done when: `$PY spinup.py packages --check` reports all tools installed and `gh auth status` succeeds.
+Done when: you know the name and the hold. If the user didn't say and `spinup status` (or `spinup machines`) shows a hub already, it is not the hub.
 
-**NixOS:** system packages and services go in `/etc/nixos/configuration.nix` (including `services.tailscale.enable = true;`), applied with `sudo nixos-rebuild switch`. Hand the exact lines to the user; a script can't install them.
+## 2. Install spinup
 
-## 3. Network + proxy
+- Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/darkyeg/spinup/main/scripts/install.sh | sh`
+- Windows: `irm https://raw.githubusercontent.com/darkyeg/spinup/main/scripts/install.ps1 | iex`
+- Or, with Go: `go install github.com/darkyeg/spinup/cmd/spinup@latest`
 
-- Hub: `$PY spinup.py setup <name> --hub` (sets the Tailscale name, installs and starts the proxy)
-- Client: `$PY spinup.py setup <name>` (finds the hub on the tailnet, asks for the API key; the user gets it on the hub with `py spinup.py show-key`)
+The script installs the release binary into `~/.local/bin` (checksum-verified). Open a new terminal if `spinup` is not found.
 
-Both log in to Tailscale on first run: the user opens the printed URL and signs in with the **same Tailscale account** as the other machines.
-Done when: `$PY spinup.py status` shows Tailscale `Running`; on a hub, `Proxy: running`; on a client, the command printed "Client ready".
+If the user edits skills or agent config, also clone this repo and, if they keep one, their private repo into `local/` ([PRIVATE.md](PRIVATE.md)). Run spinup from inside the clone (or set `SPINUP_REPO`) so it uses and edits that checkout; otherwise it uses the copy built into the binary.
+Done when: `spinup --version` prints a version.
 
-## 4. Skills + agent config
+## 3. Set up the machine
 
-`$PY spinup.py skills` then `$PY spinup.py agents`.
-Done when: both finish without errors and `~/.agents/skills` holds exactly the skills in `skills/skills.json` plus the user's own skills (`skills/local/`, `local/skills/`).
+`spinup setup <name> [--hub|--standby]`
+
+It pulls the checkout and private repo, then runs: Tailscale, the accounts service, dev tools (`tools.json`), skills, agent config. It prints the machine's addresses and ends with `spinup doctor`. Tailscale and the accounts service must succeed or setup stops; the other steps are reported at the end, so fix them and re-run.
+
+- Tailscale asks the user to open a printed URL and sign in with the **same Tailscale account** as the other machines.
+- Hub: makes the keys. Standby: asks for the dashboard password (the user gets it on the hub with `spinup keys`; or `SPINUP_PASSWORD`). Never-hold: asks for the API key once (`spinup keys` on the hub; or `SPINUP_API_KEY`).
+
+**NixOS:** system packages and services go in `/etc/nixos/configuration.nix` (including `services.tailscale.enable = true;`), applied with `sudo nixos-rebuild switch`. Hand the exact lines to the user; `spinup tools` prints the package line.
+
+Done when: setup finishes and `spinup status` shows who holds the accounts; on a hub, that is this machine.
+
+## 4. Log in
+
+Open a new terminal, run `gh auth login`, and log in to `claude` and `codex` once.
+Done when: `gh auth status` succeeds.
 
 ## 5. Repos
 
 Clone the user's active repos into the machine's usual folder (`~/personal`, `~/work`, or `C:\Users\<user>\Personal` on Windows) with `gh repo clone`.
-Then run `$PY spinup.py repo <clone> --apply` for each: it adds the stack's skills and rewrites SSH-alias remotes like `gh:owner/repo` (T3 Code groups the same repo across machines by its github.com URL).
-Done when: `$PY spinup.py repo <clone>` prints "Nothing to do" for each clone (AGENTS.md size warnings may remain).
+Then run `spinup repo <clone> --apply` for each: it adds the stack's skills and rewrites SSH-alias remotes like `gh:owner/repo` (T3 Code groups the same repo across machines by its github.com URL).
+Done when: `spinup repo <clone>` prints "Nothing to do" for each clone (AGENTS.md size warnings may remain).
 
 ## 6. T3 Code
 
-Install T3 Code. On the hub: Settings → Connections → enable **Tailscale HTTPS** and create a pairing link. On a client: Add environment → paste that link. Then follow [T3-PROXY.md](T3-PROXY.md) to add the proxy-backed provider instances.
+Install T3 Code. On the hub: Settings → Connections → enable **Tailscale HTTPS** and create a pairing link. On another machine: Add environment → paste that link. Then follow [T3-PROXY.md](T3-PROXY.md) to add the proxy-backed provider instances.
 Done when: the client's T3 lists the hub as Connected over a `*.ts.net` URL (not a `192.168.*` address).
 
 ## 7. Record it
 
-Run `$PY spinup.py doctor` and fix every `[XX]` it prints. If the user keeps a private repo in `local/` ([PRIVATE.md](PRIVATE.md)), note this machine in `local/MACHINES.md` and push it.
+Run `spinup doctor` and fix every `[XX]` it prints (each comes with its fix). If the user keeps a private repo in `local/` ([PRIVATE.md](PRIVATE.md)), note this machine in `local/MACHINES.md` and push it.
 Done when: doctor ends with "All good." and the push succeeded.

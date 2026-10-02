@@ -61,6 +61,11 @@ func (l local) takeOver() error {
 	return l.call(10*time.Second, http.MethodPost, api.PathTakeover, struct{}{}, nil)
 }
 
+// restartProxy makes the service run the proxy's new binary, if this machine holds the accounts.
+func (l local) restartProxy() error {
+	return l.call(2*time.Minute, http.MethodPost, api.PathRestart, struct{}{}, nil)
+}
+
 // stop asks the service to hand the accounts on if it holds them and exit, then waits for it to be gone.
 func (l local) stop() error {
 	if err := l.call(10*time.Second, http.MethodPost, api.PathStop, struct{}{}, nil); err != nil {
@@ -84,7 +89,7 @@ func (l local) call(timeout time.Duration, method, path string, in, out any) err
 		err = l.client.Post(ctx, l.base+path, in, out)
 	}
 	if unreachable := (*url.Error)(nil); errors.As(err, &unreachable) {
-		return fmt.Errorf("spinup isn't answering on this machine (%v); is it installed? (spinup install)", unreachable.Err)
+		return fmt.Errorf("spinup isn't answering on this machine (%v); is it set up? (spinup setup)", unreachable.Err)
 	}
 	return err
 }

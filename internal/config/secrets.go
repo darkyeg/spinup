@@ -11,7 +11,7 @@ import (
 	"github.com/darkyeg/spinup/internal/atomicfile"
 )
 
-// Secrets match spinup.py's secrets.json. The management password opens the dashboard and is the
+// Secrets are the keys in secrets.json. The management password opens the dashboard and is the
 // key machines that can hold use with each other; the API key is all a machine needs to use the accounts.
 type Secrets struct {
 	APIKey             string `json:"api_key"`
@@ -29,7 +29,7 @@ func LoadSecrets(c Config) (Secrets, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return s, fmt.Errorf("%s: %w", c.SecretsPath(), err)
 	}
-	if s.APIKey == "" || s.ManagementPassword == "" {
+	if s.APIKey == "" || (c.Hold.CanHold() && s.ManagementPassword == "") {
 		return s, fmt.Errorf("%s: missing api_key or management_password", c.SecretsPath())
 	}
 	return s, nil

@@ -5,12 +5,12 @@ Every installed skill's description sits in the agent's context in **every** ses
 ## Commands
 
 ```bash
-spinup.py skills                          # install the list on this machine, park anything not on it
-spinup.py skills list                     # every skill: auto or manual, where from, token cost
-spinup.py skills add <owner/repo> <skill> # add from a GitHub repo and install (--manual to add as manual)
-spinup.py skills remove <skill>           # take it off the list (it gets parked, not deleted)
-spinup.py skills manual <skill>           # runs only when you call it: /skill (Claude Code), $skill (Codex)
-spinup.py skills auto <skill>             # the agent may use it by itself again
+spinup skills                          # install the list on this machine, park anything not on it
+spinup skills list                     # every skill: auto or manual, where from, token cost
+spinup skills add <owner/repo> <skill> # add from a GitHub repo and install (--manual to add as manual)
+spinup skills remove <skill>           # take it off the list (it gets parked, not deleted)
+spinup skills manual <skill>           # runs only when you call it: /skill (Claude Code), $skill (Codex)
+spinup skills auto <skill>             # the agent may use it by itself again
 ```
 
 Add `--private` to `add`, `remove`, `manual` or `auto` to change only **your** machines: it edits `local/skills.json` in your private repo ([docs/PRIVATE.md](../docs/PRIVATE.md)) instead of the shared `skills.json`.
@@ -28,6 +28,6 @@ Add `--private` to `add`, `remove`, `manual` or `auto` to change only **your** m
 Stack-specific skills (React, shadcn, Go, Effect, Turborepo, ...) go into the repo that needs them. The rules (which files or packages trigger which skills) are in `per-repo.json`:
 
 ```bash
-spinup.py repo <path>           # report: stack found, skills missing
-spinup.py repo <path> --apply   # install into <path>/.agents/skills, then commit in that repo
+spinup repo <path>           # report: stack found, skills missing
+spinup repo <path> --apply   # install into <path>/.agents/skills, then commit in that repo
 ```

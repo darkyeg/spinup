@@ -11,46 +11,46 @@ import (
 	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/proxy"
 	"github.com/darkyeg/spinup/internal/release"
+	"github.com/darkyeg/spinup/internal/source"
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
-type installCmd struct {
-	Hub      bool   `xor:"hold" help:"This machine normally holds the accounts. One hub per tailnet."`
-	Standby  bool   `xor:"hold" help:"This machine takes the accounts while the hub is off."`
-	Password string `env:"SPINUP_PASSWORD" placeholder:"PASSWORD" help:"The dashboard password, for --standby (or $SPINUP_PASSWORD; asked when omitted; on the hub: spinup.py show-key)."`
-	APIKey   string `name:"api-key" env:"SPINUP_API_KEY" placeholder:"KEY" help:"The API key, for a machine that only uses the accounts (or $SPINUP_API_KEY; asked when omitted)."`
+// serviceRequest is what setup asks of the accounts service; an empty hold keeps the machine's hold.
+type serviceRequest struct {
+	hold             config.Hold
+	password, apiKey string
+	repo             source.Source
 }
 
-func (c installCmd) Help() string {
-	return `Without --hub or --standby, this machine only uses the accounts. Re-running install keeps the
-machine's hold and repairs everything else.`
-}
-
-func (c installCmd) Run() error {
+// installService runs the accounts service now and at every boot, and writes ccp.
+func installService(ctx context.Context, req serviceRequest) error {
 	cfg, err := config.Load()
 	if err != nil && !errors.Is(err, config.ErrNotInstalled) {
 		return err
 	}
-	if hold := c.hold(); hold != "" || errors.Is(err, config.ErrNotInstalled) {
-		cfg.Hold = cmp.Or(hold, config.HoldNever)
+	if req.hold != "" || errors.Is(err, config.ErrNotInstalled) {
+		cfg.Hold = cmp.Or(req.hold, config.HoldNever)
 	}
 	if cfg.Tailscale == "" {
 		cfg.Tailscale = tailnet.Find()
 	}
-	ts, err := tailnet.CLI{Bin: cfg.Tailscale}.Status(context.Background())
+	if dir, err := req.repo.Checkout(); err == nil {
+		cfg.Repo = dir
+	}
+	ts, err := tailnet.CLI{Bin: cfg.Tailscale}.Status(ctx)
 	if err := tailscaleProblem(ts, err); err != nil {
 		return err
 	}
-	step("This machine is %s on your tailnet; it %s", ts.Self.Name, holdPhrase(cfg.Hold))
+	step("This machine %s", holdPhrase(cfg.Hold))
 
-	apiKey, err := c.keys(cfg, ts)
+	apiKey, err := machineKeys(cfg, ts, req)
 	if err != nil {
 		return err
 	}
 	if err := checkLauncherKey(apiKey); err != nil {
 		return err
 	}
-	if err := ensureProxy(cfg); err != nil {
+	if err := ensureProxy(ctx, cfg); err != nil {
 		return err
 	}
 	if err := config.Save(cfg); err != nil {
@@ -61,28 +61,14 @@ func (c installCmd) Run() error {
 		return err
 	}
 	stopService()
-	step("Starting spinup at boot")
+	step("Starting the accounts service at boot")
 	if err := registerAutostart(exe, cfg); err != nil {
 		return err
 	}
 	if err := writeLauncher(cfg.Port, apiKey); err != nil {
 		return err
 	}
-	if err := waitForService(cfg); err != nil {
-		return err
-	}
-	fmt.Println()
-	return statusCmd{}.Run()
-}
-
-func (c installCmd) hold() config.Hold {
-	switch {
-	case c.Hub:
-		return config.HoldHub
-	case c.Standby:
-		return config.HoldStandby
-	}
-	return ""
+	return waitForService(cfg)
 }
 
 func tailscaleProblem(ts tailnet.Status, err error) error {
@@ -105,11 +91,10 @@ func holdPhrase(h config.Hold) string {
 	return "uses the accounts"
 }
 
-func ensureProxy(cfg config.Config) error {
+func ensureProxy(ctx context.Context, cfg config.Config) error {
 	if !cfg.Hold.CanHold() || proxy.Installed(cfg) {
 		return nil
 	}
-	ctx := context.Background()
 	rel, err := release.Latest(ctx, proxy.Project)
 	if err != nil {
 		return fmt.Errorf("find the latest CLIProxyAPI: %w", err)
@@ -119,7 +104,6 @@ func ensureProxy(cfg config.Config) error {
 }
 
 func waitForService(cfg config.Config) error {
-	step("Waiting for the service")
 	local := localService(cfg, "")
 	for deadline := time.Now().Add(45 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
 		if _, err := local.leader(); err == nil {

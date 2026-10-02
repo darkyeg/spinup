@@ -18,7 +18,7 @@ var unitTemplate string
 
 const (
 	unitName = "spinup.service"
-	// spinup.py's always-on proxy would hold the port.
+	// The always-on proxy of earlier spinup versions would hold the port.
 	legacyUnit = "cliproxyapi.service"
 )
 

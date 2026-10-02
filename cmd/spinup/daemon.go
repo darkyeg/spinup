@@ -34,7 +34,11 @@ func (c daemonCmd) Run() error {
 	}
 	defer closeLog()
 
-	o := service.Options{Config: cfg, Tailnet: tailnet.CLI{Bin: cfg.Tailscale}, Log: logger, Version: version}
+	secrets, err := config.LoadSecrets(cfg)
+	if err != nil {
+		return fmt.Errorf("%w (run spinup setup again)", err)
+	}
+	o := service.Options{Config: cfg, Secrets: secrets, Tailnet: tailnet.CLI{Bin: cfg.Tailscale}, Log: logger, Version: version}
 	if cfg.Hold.CanHold() {
 		if err := withProxy(&o, cfg, logger); err != nil {
 			return err
@@ -50,16 +54,11 @@ func (c daemonCmd) Run() error {
 }
 
 func withProxy(o *service.Options, cfg config.Config, logger *log.Logger) error {
-	secrets, err := config.LoadSecrets(cfg)
-	if err != nil {
-		return fmt.Errorf("%w (run spinup install again)", err)
-	}
 	if !proxy.Installed(cfg) {
-		return fmt.Errorf("CLIProxyAPI isn't in %s (run spinup install again)", cfg.ProxyDir)
+		return fmt.Errorf("CLIProxyAPI isn't in %s (run spinup setup again)", cfg.ProxyDir)
 	}
-	o.Secrets = secrets
 	o.Proxy = &proxy.Runner{Exe: cfg.ProxyExe(), Dir: cfg.ProxyDir, Config: cfg.ProxyConfig(), Port: cfg.ProxyPort, Log: logger}
-	o.PrepareProxy = func() error { return proxy.WriteConfig(cfg, secrets) }
+	o.PrepareProxy = func() error { return proxy.WriteConfig(cfg, o.Secrets) }
 	return nil
 }
 

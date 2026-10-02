@@ -39,6 +39,8 @@ type Config struct {
 	AuthDir              string `json:"auth_dir"`
 	// Tailscale is the tailscale CLI; empty means search for it.
 	Tailscale string `json:"tailscale,omitempty"`
+	// Repo is the spinup checkout setup ran from; empty means the data built into the binary.
+	Repo string `json:"repo,omitempty"`
 }
 
 // FailoverAfter is how long Tailscale must report the leader offline before another machine leads.
@@ -71,7 +73,7 @@ func StateDir() string {
 
 func Path() string { return filepath.Join(StateDir(), "config.json") }
 
-// Defaults share the proxy folder and logins with spinup.py, so both manage the same install.
+// Defaults is a fresh machine's configuration.
 func Defaults() Config {
 	return Config{
 		Hold:                 HoldNever,
@@ -94,7 +96,7 @@ func defaultProxyDir() string {
 	return filepath.Join(home(), ".local", "share", "cliproxyapi")
 }
 
-var ErrNotInstalled = errors.New("spinup isn't installed on this machine: run `spinup install`")
+var ErrNotInstalled = errors.New("spinup isn't installed on this machine: run `spinup setup <name>`")
 
 // Load reads config.json over the defaults.
 func Load() (Config, error) {

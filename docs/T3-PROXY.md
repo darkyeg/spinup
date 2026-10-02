@@ -136,7 +136,7 @@ cli-proxy-api.exe -codex-device-login -config "%LOCALAPPDATA%\CLIProxyAPI\config
 ```
 Add `-no-browser` to print the URL instead. [verified] `cmd/server/main.go` flags;
 CLIProxyAPIDocs `configuration/provider/claude-code.md`, `codex.md`.
-The service uses `%LOCALAPPDATA%\CLIProxyAPI\config.yaml` (scheduled task `CLIProxyAPI`, created by `spinup.py hub`) **[verified]**.
+The service uses `%LOCALAPPDATA%\CLIProxyAPI\config.yaml` (written by spinup from `proxy/config.template.yaml`; the proxy is run by the spinup accounts service, boot task `spinup`, on the machine holding the accounts) **[verified]**.
 
 Auth files land in `auth-dir` from config.yaml, by default `~/.cli-proxy-api`.
 [verified] CLIProxyAPIDocs `configuration/auth-dir.md`

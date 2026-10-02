@@ -2,109 +2,112 @@
 
 # spinup
 
-**Set up every computer you code with AI on, with one command, and keep them the same.**
+**Every computer you code with AI on: set up with one command, kept the same, sharing your AI accounts without ever logging them out.**
 
-You have a main PC and maybe a laptop or a Mac. You use Claude Code and Codex. spinup:
+You have a desktop, a laptop, maybe a Mac. You use Claude Code and Codex. On each machine you install the same tools, copy the same skills and settings, and sign in to the same accounts, then watch them drift apart. And if two machines refresh the same login, the provider logs you out everywhere.
 
-- installs your dev tools (git, node, rg, fd, gh, go, rust, uv, bun, Claude Code, Codex);
-- connects your machines privately with [Tailscale](https://tailscale.com), so they reach each other by the names you give them, at home or away;
-- makes one machine the **hub**: it holds your Claude/Codex logins in [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI), and the others use them through it;
-- gives every machine the same **skills**, instructions and token-saving settings for Claude Code and Codex;
-- checks itself: `doctor` lists every problem with the command that fixes it.
+spinup fixes that:
 
-Python standard library only. Windows, macOS and Linux. Every command is safe to re-run; re-running is how you repair.
+- **One command per machine.** `spinup setup <name>` installs your dev tools, joins your private network ([Tailscale](https://tailscale.com)), installs your skills and agent settings, and ends with a health check.
+- **Your accounts on every machine.** One machine holds your Claude and Codex logins in [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI); every machine uses them at `http://localhost:8317`. If the holder goes off, a standby takes over, and gives the accounts back when it returns. Two machines never refresh the same login, so you are never logged out.
+- **The same agents everywhere.** Skills, instructions and token-saving settings for Claude Code and Codex live in one repo. Change them once; every machine gets them.
+- **It tells you what's wrong.** `spinup doctor` checks everything and prints the command that fixes each problem.
+
+One Go binary, no dependencies. Windows, macOS and Linux. Every command is safe to re-run; re-running is how you repair.
 
 ## Quick start
 
-You need git and Python 3.11+ (on Windows the python.org build; run it as `py`, not the Microsoft Store `python`).
+**1. Install spinup** on each machine:
 
-**1. Choose a name for each machine.** The name becomes the machine's address on your private network: if you call your hub `office-pc`, every other machine reaches it as `office-pc` (`http://office-pc:8317`, `ssh office-pc`). Lowercase letters, digits and dashes. Below, `<hub-name>` and `<machine-name>` are **placeholders**: replace them with your own names.
-
-**2. On your main machine (the hub, which holds the accounts):**
-
-```bash
-git clone https://github.com/darkyeg/spinup && cd spinup
-python3 spinup.py setup <hub-name> --hub
+```sh
+# macOS, Linux
+curl -fsSL https://raw.githubusercontent.com/darkyeg/spinup/main/scripts/install.sh | sh
 ```
 
-**3. On every other machine (it finds the hub by itself):**
-
-```bash
-git clone https://github.com/darkyeg/spinup && cd spinup
-python3 spinup.py setup <machine-name>
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/darkyeg/spinup/main/scripts/install.ps1 | iex
 ```
 
-Without a name, `setup` asks for one (and suggests the machine's current name). The first run opens a Tailscale login: use the **same Tailscale account** everywhere. A client asks for the hub's key once; get it on the hub with `spinup.py show-key`. At the end, `setup` prints the machine's addresses.
+**2. Set up the machine that holds your accounts** (the hub, usually your desktop). Pick a name: it becomes the machine's address on your network.
 
-Or just tell your agent: *"set up this machine with spinup"*. It follows [docs/SETUP.md](docs/SETUP.md).
+```sh
+spinup setup office-pc --hub
+```
 
-## Every day
+Then add your accounts in the dashboard it shows (`http://localhost:8317/management.html`, **OAuth Login**).
 
-| You want to... | Run |
-|---|---|
-| Use Claude Code with the hub's accounts | `ccp` (plain `claude` keeps its own login) |
-| See all your machines and their addresses | `spinup.py links` |
-| Check that everything is fine | `spinup.py doctor` |
-| Update the proxy, skills and Tailscale | `spinup.py update` |
-| Get a project ready for agents | `spinup.py repo <path> --apply` |
+**3. Set up every other machine.** Make a laptop a standby, so the accounts keep working while the hub is off:
+
+```sh
+spinup setup laptop --standby     # asks for the dashboard password: run `spinup keys` on the hub
+spinup setup work-mac             # only uses the accounts; asks for the API key once
+```
+
+Use the **same Tailscale account** on every machine. Then run `ccp` instead of `claude` to use Claude Code with the shared accounts (plain `claude` keeps its own login).
+
+Prefer your agent to do it? Tell it *"set up this machine with spinup"*: it follows [docs/SETUP.md](docs/SETUP.md).
 
 ## Commands
 
-| Command | What it does |
+| | |
 |---|---|
-| `setup [name] [--hub]` | The whole machine: tools, Tailscale name, proxy (hub, or a client that finds the hub), skills, agent config, then `doctor` |
-| `links` | Every device on your tailnet: name, IP, full domain, OS, online, which one is the hub |
-| `doctor` | Health check with a fix for each problem |
-| `packages` | Install missing tools from `packages.json` (winget / brew / apt; NixOS gets a config snippet) |
-| `skills` | Install the skills in `skills/skills.json` for Claude Code + Codex; park the rest. Also `skills list / add / remove / manual / auto` |
-| `agents` | Install the shared instructions, a cheap Explore subagent and token-saving settings |
-| `repo <path>` | Detect a project's stack, add its skills (`--apply`), check its AGENTS.md size and git remote |
-| `hub` / `client` | Just the proxy part of `setup` |
-| `update` | Update CLIProxyAPI (checksum-verified, keeps config and accounts), skills, Tailscale |
-| `status` / `show-key` | Proxy and Tailscale at a glance / the hub's API key and dashboard password |
+| `spinup setup <name> [--hub\|--standby]` | Set up or repair the whole machine |
+| `spinup doctor` | Check everything; each problem comes with its fix |
+| `spinup update` | Update spinup, CLIProxyAPI, skills and Tailscale |
+| `spinup status` | Who holds the accounts, every login, every machine |
+| `spinup handoff <machine>` | Move the accounts to another machine, safely |
+| `spinup machines` | Every device on your network and its address |
+| `spinup skills [list\|add\|remove\|manual\|auto]` | Your skills for Claude Code and Codex |
+| `spinup agents` | Shared instructions, subagents and settings |
+| `spinup repo <path> [--apply]` | Get a project ready for agents: its stack's skills, AGENTS.md, git remote |
+| `spinup tools` | Install the dev tools a machine lacks |
+| `spinup keys` | The API key and dashboard password (hub or standby) |
 
-Run them as `py spinup.py <command>` on Windows, `python3 spinup.py <command>` elsewhere.
+`spinup <command> --help` explains each one.
 
 ## How it works
 
 ```
- <machine-name> ──┐                         ┌── Claude / Codex accounts
- <machine-name> ──┼── Tailscale (private) ──┤   (CLIProxyAPI, http://<hub-name>:8317)
- phone          ──┘                         └── <hub-name>
+ laptop (standby) ──┐                        ┌─ office-pc (hub): holds the accounts
+ work-mac        ───┼── Tailscale, private ──┤   in CLIProxyAPI
+ phone           ───┘                        └─ every machine: http://localhost:8317
 ```
 
-- **Names, not IPs.** Tailscale gives each machine a fixed private IP and a name. spinup sets the name you choose. At home traffic goes straight over your router; away it goes direct over the internet, or through an encrypted relay if it must.
-- **No machine list to maintain.** Tailscale *is* the list. Clients find the hub by asking each online device whether it runs the proxy.
-- **One source of truth.** Skills, instructions and settings live in this repo. `setup` pulls the latest version first, so all machines stay the same.
+- **Names, not IPs.** Tailscale gives each machine a fixed private address and the name you chose. At home traffic goes straight over your router; away, directly over the internet, or through an encrypted relay when it must.
+- **No machine list to keep.** Tailscale is the list; spinup reads it.
+- **One holder at a time.** A standby takes over only when Tailscale itself reports the holder offline for three minutes, never just because it can't reach it. A planned stop hands the accounts over in a second. How this stays safe: [docs/DESIGN.md](docs/DESIGN.md). Day-to-day use: [docs/SERVICE.md](docs/SERVICE.md).
+- **One source of truth.** Fork this repo to make it yours: skills, instructions, settings and tools live in it, and `setup` pulls your latest version first.
 
 ## Make it yours
 
+Fork the repo and clone your fork; spinup uses the checkout it runs in (or `SPINUP_REPO`).
+
 | Change | Edit, then run |
 |---|---|
-| Skills for every machine | `skills add <owner/repo> <skill>`, `skills remove <skill>` (or edit `skills/skills.json` → `skills`) |
-| Which skills run by themselves | `skills list` shows auto/manual and the token cost; `skills manual <skill>` makes one run only when you call it (`/skill` in Claude Code, `$skill` in Codex) |
-| Skills per project type (Go, Next.js, ...) | `skills/per-repo.json` → `repo <path> --apply` |
-| Instructions and settings for Claude Code / Codex | `agents/` → `agents` |
-| Dev tools | `packages.json` → `packages` |
-| Proxy config | `proxy/config.template.yaml` → `hub` |
+| Skills on every machine | `spinup skills add <owner/repo> <skill>` / `remove <skill>` |
+| Which skills run by themselves | `spinup skills list` shows auto/manual and the token cost; `spinup skills manual <skill>` |
+| Skills per project type (Go, Next.js, ...) | `skills/per-repo.json` → `spinup repo <path> --apply` |
+| Instructions and settings | `agents/` → `spinup agents` |
+| Dev tools | `tools.json` → `spinup tools` |
 
-**Personal things** (your own preferences, private skills, machine notes) go in a private repo cloned into `local/`. This repo ignores that folder, and spinup picks it up automatically: see [docs/PRIVATE.md](docs/PRIVATE.md).
-
-Why the defaults are what they are: [docs/WHY.md](docs/WHY.md). Using the proxy from T3 Code: [docs/T3-PROXY.md](docs/T3-PROXY.md).
-
-**Keep the accounts up when the hub is off (new, optional):** the `spinup` service runs on each machine, keeps a synced copy of the logins on a standby (e.g. your laptop), and moves the accounts there when the hub goes off, without logging them out. Every machine then uses `http://localhost:8317`. How to use it: [docs/SERVICE.md](docs/SERVICE.md); how it stays safe: [docs/DESIGN.md](docs/DESIGN.md).
+**Personal things** (your preferences, private skills, notes about your machines) go in a private repo cloned into `local/`; the public repo ignores it: [docs/PRIVATE.md](docs/PRIVATE.md). Why the defaults are what they are: [docs/WHY.md](docs/WHY.md). Using the accounts from T3 Code: [docs/T3-PROXY.md](docs/T3-PROXY.md).
 
 ## Security
 
-- Nothing is exposed to the internet. The proxy only accepts connections from Tailscale addresses (a firewall rule on Windows), and Tailscale traffic is end-to-end encrypted (WireGuard).
-- Keys stay on the hub (`secrets.json`, never committed). Clients keep their copy only in their local `ccp` launcher.
-- Tools come from your OS package manager or the vendor's official installer.
-- Protect the two accounts everything depends on: turn on 2FA for **GitHub** and for the login you use for **Tailscale**.
-- In the Tailscale admin console, **disable key expiry** for your machines, or they drop off the network when the login expires (`doctor` warns you).
+- **Nothing faces the internet.** The accounts are reachable only on your tailnet (a firewall rule on Windows limits the port to Tailscale addresses), and Tailscale traffic is end-to-end encrypted.
+- **Keys stay on your machines** (`secrets.json`, never committed). Machines prove they know the keys before any key or login is sent to them.
+- **Downloads are checksum-verified**: spinup's own updates and CLIProxyAPI's.
+- Turn on 2FA for **GitHub** and for your **Tailscale** login, and disable Tailscale key expiry for your machines (`doctor` warns you).
+- Found a problem? See [SECURITY.md](SECURITY.md).
 
 ## Important
 
 Routing subscription accounts through a proxy may conflict with your provider's terms. Read them and decide for yourself; you are responsible for how you use your accounts. spinup's own rule: use Claude accounts only through Claude Code (`ccp`, or T3 Code's Claude provider), never from other apps.
+
+## Contributing
+
+Ideas and fixes are welcome: [CONTRIBUTING.md](CONTRIBUTING.md). Terms used everywhere: [GLOSSARY.md](GLOSSARY.md).
 
 ## License
 

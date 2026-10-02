@@ -9,15 +9,15 @@ import (
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
-func TestInstallHold(t *testing.T) {
+func TestSetupHold(t *testing.T) {
 	cases := []struct {
 		name string
-		cmd  installCmd
+		cmd  setupCmd
 		want config.Hold
 	}{
-		{"no flag keeps the machine's hold", installCmd{}, ""},
-		{"hub", installCmd{Hub: true}, config.HoldHub},
-		{"standby", installCmd{Standby: true}, config.HoldStandby},
+		{"no flag keeps the machine's hold", setupCmd{}, ""},
+		{"hub", setupCmd{Hub: true}, config.HoldHub},
+		{"standby", setupCmd{Standby: true}, config.HoldStandby},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

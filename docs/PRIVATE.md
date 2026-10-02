@@ -23,10 +23,10 @@ On every other machine, clone it into `local/` too: `git clone <your private rep
 
 ## What spinup does with it
 
-- `setup` pulls `local/` together with spinup, so all machines get your changes.
-- `agents` appends `local/AGENTS.md` to the shared instructions for Claude Code (`~/.claude/CLAUDE.md`) and Codex (`~/.codex/AGENTS.md`).
-- `skills` installs every `local/skills/<name>/SKILL.md` for both agents, next to the skills from `skills/skills.json`.
-- `doctor` reports whether `local/` has changes you haven't pushed.
+- `spinup setup` pulls `local/` together with spinup, so all machines get your changes.
+- `spinup agents` appends `local/AGENTS.md` to the shared instructions for Claude Code (`~/.claude/CLAUDE.md`) and Codex (`~/.codex/AGENTS.md`).
+- `spinup skills` installs every `local/skills/<name>/SKILL.md` for both agents, next to the skills from `skills/skills.json`.
+- `spinup doctor` reports whether `local/` has changes you haven't pushed.
 
 ## Examples for `local/AGENTS.md`
 

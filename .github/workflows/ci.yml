@@ -30,12 +30,18 @@ jobs:
         if: runner.os != 'Linux'
         run: go test -count=1 ./...
 
-  python:
+  cross-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-go@v6
         with:
-          python-version: "3.12"
-      - run: python -m py_compile spinup.py spin/*.py
-      - run: python spinup.py --help
+          go-version-file: go.mod
+      - name: build every release target
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 freebsd/amd64; do
+            GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/spinup
+          done
+      - run: sh -n scripts/install.sh

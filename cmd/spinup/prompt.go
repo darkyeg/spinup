@@ -28,3 +28,10 @@ func confirm(prompt string) bool {
 	answer := strings.ToLower(strings.TrimSpace(line))
 	return answer == "y" || answer == "yes"
 }
+
+// askLine reads one line of input.
+func askLine(prompt string) string {
+	fmt.Print(prompt)
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	return strings.TrimSpace(line)
+}
