@@ -5,8 +5,6 @@ from .common import *
 from .tailscale import dns_name, find_hub, setup_tailscale, tailnet_nodes, tailscale_bin, tailscale_status
 
 
-# ---------------------------------------------------------------- CLIProxyAPI binary
-
 def installed_version() -> str | None:
     if not EXE.exists():
         return None
@@ -76,8 +74,6 @@ def _try_unlink(path: Path) -> None:
         pass  # still running; removed on the next update
 
 
-# ---------------------------------------------------------------- config + secrets
-
 def load_secrets() -> dict[str, str]:
     if SECRETS.exists():
         return json.loads(SECRETS.read_text(encoding="utf-8"))
@@ -110,8 +106,6 @@ def write_config(sec: dict[str, str]) -> None:
     if not WINDOWS:
         CONFIG.chmod(0o600)
 
-
-# ---------------------------------------------------------------- run at boot
 
 def register_autostart() -> None:
     log("Registering CLIProxyAPI to start at boot")
@@ -193,8 +187,6 @@ def wait_healthy(key: str) -> int:
     return 0
 
 
-# ---------------------------------------------------------------- ccp launcher
-
 def write_ccp(url: str, key: str) -> None:
     """`ccp` = Claude Code through the proxy. Plain `claude` keeps its normal login."""
     BIN_DIR.mkdir(parents=True, exist_ok=True)
@@ -215,8 +207,6 @@ def write_ccp(url: str, key: str) -> None:
     if not on_path:
         log(f"Add {BIN_DIR} to your PATH to run `ccp` from anywhere")
 
-
-# ---------------------------------------------------------------- commands
 
 def service_guard() -> None:
     if service_installed():

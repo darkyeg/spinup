@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// run runs a command with this terminal, so it can show output and ask for a password.
+// run shares this terminal, so the command can show output and ask for a password.
 func run(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -20,8 +20,7 @@ func run(name string, args ...string) error {
 	return nil
 }
 
-// runSudo runs a command as root (sudo asks for the password if needed).
-func runSudo(name string, args ...string) error {
+func runAsRoot(name string, args ...string) error {
 	if os.Geteuid() == 0 {
 		return run(name, args...)
 	}

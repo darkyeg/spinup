@@ -1,58 +1,42 @@
-//go:build linux
-
 package main
 
 import (
-	"fmt"
+	"bytes"
+	_ "embed"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"text/template"
 
+	"github.com/darkyeg/spinup/internal/atomicfile"
 	"github.com/darkyeg/spinup/internal/config"
 )
 
+//go:embed autostart/spinup.service
+var unitTemplate string
+
 const (
 	unitName = "spinup.service"
-	// The always-on proxy that `spinup.py hub` sets up; the service runs the proxy from now on.
+	// The always-on proxy of spinup.py would hold the port; spinup runs the proxy from now on.
 	legacyUnit = "cliproxyapi.service"
 )
 
-func unitPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "systemd", "user", unitName)
-}
-
-// registerAutostart installs a systemd user unit. On hub/standby, lingering keeps it running
-// without a login, so the accounts survive a reboot.
+// registerAutostart installs a systemd user unit. Lingering keeps it running without a login on
+// machines that can hold the accounts, so they survive a reboot.
 func registerAutostart(exe string, cfg config.Config) error {
-	unit := fmt.Sprintf(`[Unit]
-Description=spinup: AI accounts on all your machines
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-ExecStart=%q daemon --home %q
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-`, exe, config.StateDir())
-	if err := config.WriteFileAtomic(unitPath(), []byte(unit), 0o644); err != nil {
+	if err := writeUnit(exe); err != nil {
 		return err
 	}
-	if exec.Command("systemctl", "is-enabled", "--quiet", legacyUnit).Run() == nil ||
-		exec.Command("systemctl", "is-active", "--quiet", legacyUnit).Run() == nil {
-		step("Turning off the old always-on proxy (%s); the service runs it now", legacyUnit)
-		if err := runSudo("systemctl", "disable", "--now", legacyUnit); err != nil {
+	if systemctlSays("is-enabled", legacyUnit) || systemctlSays("is-active", legacyUnit) {
+		step("Turning off the old always-on proxy (%s)", legacyUnit)
+		if err := runAsRoot("systemctl", "disable", "--now", legacyUnit); err != nil {
 			return err
 		}
 	}
-	if cfg.Role.Eligible() {
-		if exec.Command("loginctl", "enable-linger").Run() != nil {
-			if err := runSudo("loginctl", "enable-linger", currentUser()); err != nil {
-				return fmt.Errorf("keep the service running without a login: %w", err)
-			}
+	if cfg.Hold.CanHold() && exec.Command("loginctl", "enable-linger").Run() != nil {
+		if err := runAsRoot("loginctl", "enable-linger", currentUser()); err != nil {
+			return err
 		}
 	}
 	for _, args := range [][]string{{"daemon-reload"}, {"enable", unitName}, {"restart", unitName}} {
@@ -69,4 +53,22 @@ func unregisterAutostart(config.Config) error {
 		return err
 	}
 	return run("systemctl", "--user", "daemon-reload")
+}
+
+func writeUnit(exe string) error {
+	tmpl := template.Must(template.New(unitName).Funcs(template.FuncMap{"quote": strconv.Quote}).Parse(unitTemplate))
+	var unit bytes.Buffer
+	if err := tmpl.Execute(&unit, map[string]string{"Exe": exe, "Home": config.StateDir()}); err != nil {
+		return err
+	}
+	return atomicfile.Write(unitPath(), unit.Bytes(), 0o644)
+}
+
+func unitPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "systemd", "user", unitName)
+}
+
+func systemctlSays(question, unit string) bool {
+	return exec.Command("systemctl", question, "--quiet", unit).Run() == nil
 }

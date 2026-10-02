@@ -1,0 +1,6 @@
+#!/bin/sh
+# Claude Code through your accounts (written by spinup install)
+export ANTHROPIC_BASE_URL="http://127.0.0.1:{{.Port}}"
+export ANTHROPIC_AUTH_TOKEN="{{.APIKey}}"
+unset ANTHROPIC_API_KEY
+exec claude "$@"

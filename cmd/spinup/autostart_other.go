@@ -9,7 +9,7 @@ import (
 	"github.com/darkyeg/spinup/internal/config"
 )
 
-var errNoAutostart = errors.New("starting the service at boot isn't supported on " + runtime.GOOS +
+var errNoAutostart = errors.New("spinup can't start itself at boot on " + runtime.GOOS +
 	" yet: run `spinup daemon` from your init system")
 
 func registerAutostart(string, config.Config) error { return errNoAutostart }

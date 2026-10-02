@@ -1,0 +1,12 @@
+[Unit]
+Description=spinup: your AI accounts on all your machines
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart={{quote .Exe}} daemon --home {{quote .Home}}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

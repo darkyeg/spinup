@@ -32,11 +32,11 @@ func TestChecksumFor(t *testing.T) {
 	}
 }
 
-func TestBroken(t *testing.T) {
-	if !(AuthState{Unavailable: true, StatusMessage: "refresh failed: invalid_grant"}).Broken() {
-		t.Error("invalid_grant must count as broken")
+func TestRefused(t *testing.T) {
+	if !(LoginState{Unavailable: true, StatusMessage: "refresh failed: invalid_grant"}).Refused() {
+		t.Error("invalid_grant is a refused token")
 	}
-	if (AuthState{Unavailable: true, StatusMessage: "rate limited"}).Broken() {
-		t.Error("a rate limit is not a broken token")
+	if (LoginState{Unavailable: true, StatusMessage: "rate limited"}).Refused() {
+		t.Error("a rate limit is not a refused token")
 	}
 }

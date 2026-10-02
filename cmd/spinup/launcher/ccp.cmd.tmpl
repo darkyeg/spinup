@@ -1,0 +1,6 @@
+@echo off
+rem Claude Code through your accounts (written by spinup install)
+set "ANTHROPIC_BASE_URL=http://127.0.0.1:{{.Port}}"
+set "ANTHROPIC_AUTH_TOKEN={{.APIKey}}"
+set "ANTHROPIC_API_KEY="
+claude %*

@@ -4,8 +4,6 @@ from __future__ import annotations
 from .common import *
 
 
-# ---------------------------------------------------------------- tailscale
-
 def tailscale_bin() -> str | None:
     found = shutil.which("tailscale")
     if found:

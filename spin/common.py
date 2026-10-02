@@ -62,8 +62,6 @@ SERVICE_HOME = Path(os.environ.get("SPINUP_HOME") or (
     Path(os.environ["LOCALAPPDATA"]) / "spinup" if WINDOWS else HOME / ".local" / "share" / "spinup"))
 
 
-# ---------------------------------------------------------------- helpers
-
 def own_skills() -> dict[str, Path]:
     """Skills shipped as folders (not from a skills repo): skills/local/* plus your private local/skills/*."""
     found = {}
