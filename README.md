@@ -92,6 +92,8 @@ Run them as `py spinup.py <command>` on Windows, `python3 spinup.py <command>` e
 
 Why the defaults are what they are: [docs/WHY.md](docs/WHY.md). Using the proxy from T3 Code: [docs/T3-PROXY.md](docs/T3-PROXY.md).
 
+**Next version:** a background service that moves your accounts to another machine when the main one goes off, without logging them out. See [docs/DESIGN.md](docs/DESIGN.md).
+
 ## Security
 
 - Nothing is exposed to the internet. The proxy only accepts connections from Tailscale addresses (a firewall rule on Windows), and Tailscale traffic is end-to-end encrypted (WireGuard).
