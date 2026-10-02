@@ -1,6 +1,8 @@
 # spinup 2: design
 
-Status: **proposal**. Today's spinup is the Python CLI described in the [README](../README.md). This document describes the next version: one Go program that runs in the background, keeps your machines in sync, and moves your AI accounts to another machine when the main one goes off, **without ever logging the accounts out**.
+Status: **Phase 1 built** (the service: `cmd/spinup`, `internal/`; how to use it: [SERVICE.md](SERVICE.md)). Phase 2 (self-update, the rest of the Python CLI) is planned. This document describes the design: one Go program that runs in the background, keeps your machines in sync, and moves your AI accounts to another machine when the main one goes off, **without ever logging the accounts out**.
+
+In the commands, a follower that may take over is called a **standby**, and the machine you prefer as leader is the **hub**.
 
 ## What changes for you
 
@@ -62,31 +64,33 @@ spinup 2 is built around a **single writer**: at any moment, exactly one machine
 
 - **Nothing on the internet.** All traffic stays inside your tailnet and is end-to-end encrypted (WireGuard).
 - **Logins are fetched only with a key.** Followers authenticate to the leader with the proxy's management key; clients never receive logins at all.
-- **Least privilege.** spinupd runs as your user, never as SYSTEM or root. On Windows, starting at logon needs no admin; starting at boot (before anyone logs in, useful for the leader) needs one admin prompt at install time, and never again.
+- **Least privilege.** spinupd runs as your user, never as SYSTEM or root. On Windows, starting at boot (before anyone logs in) and the Tailscale-only firewall rule need one admin prompt at install time, and never again.
 - **At rest.** The login folder is readable by your user only. Use disk encryption (BitLocker, FileVault, LUKS) on every machine that can be leader or follower.
 - **Never in git.** Logins and keys never touch any repository.
-- **Signed updates.** Releases are built by GitHub Actions; spinupd verifies each download's checksum and signature before it replaces itself.
+- **Signed updates (Phase 2).** Releases are built by GitHub Actions; spinupd verifies each download's checksum and signature before it replaces itself.
 
-## Updates
+## Updates (Phase 2)
 
 - spinupd checks GitHub Releases (daily, and on start), verifies the new version, swaps the binary and restarts itself. You can pin a version or turn this off.
 - Skills, agent instructions and settings ship inside each release, so a machine is up to date without `git pull`.
 - CLIProxyAPI is updated the same way: the latest release, checksum-verified, applied by the leader during a quiet moment, without losing accounts.
 - Your private layer (`local/`) stays a git repo you control; spinupd pulls it.
 
-## Commands (planned)
+## Commands
 
 | Command | What it does |
 |---|---|
-| `spinup setup <name> [--leader \| --follower]` | Install, join Tailscale, choose this machine's role, start the service |
-| `spinup status` | Who is leader, sync age per follower, each account's state |
-| `spinup handoff <machine>` | Move the accounts to another machine, safely |
-| `spinup doctor` | Every problem, with its fix |
-| `spinup links`, `skills`, `agents`, `repo` | As today |
+| `spinup install --role hub\|standby\|client` | Start the service at boot with this role (built) |
+| `spinup status` | Who is leader, this machine's sync age, each login, every machine (built) |
+| `spinup handoff <machine>` | Move the accounts to another machine, safely (built) |
+| `spinup lead --force` | Take the accounts when the leader is lost for good (built) |
+| `spinup setup`, `doctor`, `links`, `skills`, `agents`, `repo` | Still in `spinup.py`; move here in Phase 2 |
 
 ## Plan
 
-1. **Phase 1:** spinupd with the `localhost:8317` front, leader election (Tailscale as referee), sync within seconds with newest-wins, safe handoff, self-repair, `status`.
-2. **Phase 2:** move the remaining Python commands into the same binary; CI releases; self-update. The Python version keeps working until then.
+1. **Phase 1 (built):** the service with the `localhost:8317` front, leader election (Tailscale as referee), sync within seconds with newest-wins, safe handoff, self-fencing and sleep detection, self-repair, `install`/`status`/`handoff`/`lead --force`, CI and tagged releases with checksums.
+2. **Phase 2:** move the remaining Python commands into the same binary; self-update with signed releases; CLIProxyAPI updates by the leader. The Python version keeps working until then.
+
+The safety rules are tested in `internal/cluster`: `Decide` is a pure function with a table of cases, and a simulated tailnet runs whole lifecycles (failover, partition, hand-back, planned shutdown) while checking that no two proxies ever run at once.
 
 Questions and ideas: open an issue.

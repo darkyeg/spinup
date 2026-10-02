@@ -56,6 +56,10 @@ SKILLS_PARKED = HOME / ".agents" / "skills-parked"    # not scanned by any agent
 CLAUDE_HOME = Path(os.environ.get("CLAUDE_CONFIG_DIR") or HOME / ".claude")
 CODEX_HOME = Path(os.environ.get("CODEX_HOME") or HOME / ".codex")
 PY = "py spinup.py" if WINDOWS else "python3 spinup.py"  # how to run this script, for messages
+# The Go service (cmd/spinup, docs/SERVICE.md) keeps its config here once installed; from then on it
+# runs the proxy, and the hub/client commands below step aside.
+SERVICE_HOME = Path(os.environ.get("SPINUP_HOME") or (
+    Path(os.environ["LOCALAPPDATA"]) / "spinup" if WINDOWS else HOME / ".local" / "share" / "spinup"))
 
 
 # ---------------------------------------------------------------- helpers
@@ -67,6 +71,11 @@ def own_skills() -> dict[str, Path]:
         if base.is_dir():
             found.update({p.name: p for p in sorted(base.iterdir()) if (p / "SKILL.md").exists()})
     return found
+
+
+def service_installed() -> bool:
+    """True when the spinup service runs the proxy on this machine (see docs/SERVICE.md)."""
+    return (SERVICE_HOME / "config.json").exists()
 
 
 def log(msg: str) -> None:

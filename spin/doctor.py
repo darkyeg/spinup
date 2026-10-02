@@ -65,6 +65,9 @@ def check_network(r: Report) -> None:
                    "https://login.tailscale.com/admin/machines > ... > Disable key expiry")
         elif node.get("Expired"):
             r.fail(f"{dns_name(node)}: Tailscale login expired", f"log in on {dns_name(node)}: tailscale up")
+    if not st.get("CertDomains"):
+        r.warn("Tailscale HTTPS certificates are off, so `tailscale serve` (and T3 Code's "
+               "`t3 pair --tailscale`) hang", "https://login.tailscale.com/admin/dns > HTTPS Certificates > Enable")
     if not (st.get("CurrentTailnet") or {}).get("MagicDNSEnabled"):
         r.warn("MagicDNS is off, so machine names like `pc` don't resolve",
                "https://login.tailscale.com/admin/dns > Enable MagicDNS")

@@ -92,7 +92,7 @@ Run them as `py spinup.py <command>` on Windows, `python3 spinup.py <command>` e
 
 Why the defaults are what they are: [docs/WHY.md](docs/WHY.md). Using the proxy from T3 Code: [docs/T3-PROXY.md](docs/T3-PROXY.md).
 
-**Next version:** a background service that moves your accounts to another machine when the main one goes off, without logging them out. See [docs/DESIGN.md](docs/DESIGN.md).
+**Keep the accounts up when the hub is off (new, optional):** the `spinup` service runs on each machine, keeps a synced copy of the logins on a standby (e.g. your laptop), and moves the accounts there when the hub goes off, without logging them out. Every machine then uses `http://localhost:8317`. How to use it: [docs/SERVICE.md](docs/SERVICE.md); how it stays safe: [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Security
 

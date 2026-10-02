@@ -102,6 +102,8 @@ def load_secrets() -> dict[str, str]:
 def write_config(sec: dict[str, str]) -> None:
     text = (TEMPLATE.read_text(encoding="utf-8")
             .replace("{{PORT}}", str(PORT))
+            .replace("{{HOST}}", "")
+            .replace("{{AUTH_DIR}}", "~/.cli-proxy-api")
             .replace("{{API_KEY}}", sec["api_key"])
             .replace("{{SECRET_KEY}}", sec["management_password"]))  # proxy hashes it on start
     CONFIG.write_text(text, encoding="utf-8")
@@ -216,7 +218,14 @@ def write_ccp(url: str, key: str) -> None:
 
 # ---------------------------------------------------------------- commands
 
+def service_guard() -> None:
+    if service_installed():
+        die("the spinup service runs the proxy on this machine (`spinup status`); "
+            "to go back to this setup, run `spinup uninstall` first")
+
+
 def cmd_hub(args: argparse.Namespace) -> None:
+    service_guard()
     setup_tailscale(getattr(args, "name", None))
     if not EXE.exists():
         install_proxy_binary(*latest_release())
@@ -246,6 +255,7 @@ Other machines:            {PY} setup <name>  (they find this hub on the tailnet
 
 
 def cmd_client(args: argparse.Namespace) -> None:
+    service_guard()
     setup_tailscale(getattr(args, "name", None))
     hub_os = ""
     if not args.hub:
@@ -270,7 +280,9 @@ def cmd_client(args: argparse.Namespace) -> None:
 
 
 def cmd_update(args: argparse.Namespace) -> None:
-    if EXE.exists():
+    if service_installed():
+        log("CLIProxyAPI is run by the spinup service here; skipping its update")
+    elif EXE.exists():
         current = installed_version()
         latest, assets = latest_release()
         if current == latest and not args.force:
@@ -305,6 +317,9 @@ def cmd_status(_: argparse.Namespace) -> None:
     me = st.get("Self", {})
     print(f"Tailscale:   {st.get('BackendState', 'not installed')}  "
           f"{me.get('HostName', '')} {' '.join(me.get('TailscaleIPs', [])[:1])}")
+    if service_installed():
+        print("Proxy:       run by the spinup service (`spinup status` shows the accounts and machines)")
+        return
     if not EXE.exists():
         print("CLIProxyAPI: not installed (this is a client, or run `hub`)")
         return

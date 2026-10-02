@@ -7,7 +7,7 @@ from .doctor import cmd_doctor
 from .packages import cmd_packages
 from .proxy import cmd_client, cmd_hub
 from .skills import cmd_skills
-from .tailscale import dns_name, find_hub, tailnet_nodes, tailscale_status
+from .tailscale import dns_name, find_hub, setup_tailscale, tailnet_nodes, tailscale_status
 
 NAME = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")  # a valid Tailscale / DNS name
 
@@ -39,7 +39,10 @@ def cmd_setup(args: argparse.Namespace) -> None:
     hub = args.hub or EXE.exists()  # a machine that already runs the proxy stays the hub
     log(f"Setting up {name} as {'the hub' if hub else 'a client (finds the hub on the tailnet)'}")
     steps = [("dev tools", cmd_packages, {"check": False})]
-    if hub:
+    if service_installed():
+        log("The spinup service runs the proxy here; only the Tailscale name is set")
+        steps.append(("Tailscale", lambda a: setup_tailscale(a.name), {}))
+    elif hub:
         steps.append(("hub: Tailscale + proxy", cmd_hub, {"import_auth": None}))
     else:
         steps.append(("client: Tailscale + proxy", cmd_client, {"hub": None, "key": args.key}))

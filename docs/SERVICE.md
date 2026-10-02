@@ -1,0 +1,118 @@
+# The spinup service
+
+`spinup` (Go, in `cmd/` and `internal/`) is a small background service that runs on each of your machines. It keeps your AI accounts usable when the machine that holds them is off, and it **never lets two machines use the same login at once**, so the accounts don't get logged out. The design and its reasoning are in [DESIGN.md](DESIGN.md).
+
+It replaces the proxy part of `spinup.py` (`hub` / `client`). Everything else (`setup`, `skills`, `agents`, `repo`, `doctor`, `links`) stays in `spinup.py` for now and keeps working next to the service.
+
+## Roles
+
+Each machine gets one role when you install the service:
+
+| Role | What it does | How many |
+|---|---|---|
+| `hub` | Normally holds the accounts and runs CLIProxyAPI | One per tailnet |
+| `standby` | Keeps a synced copy of the logins; takes over when the hub is off; hands them back when it returns | Any number (e.g. your laptop) |
+| `client` | Uses the accounts through whichever machine holds them; never stores logins | Any number |
+
+The machine that holds the accounts right now is the **leader**. Usually that's the hub.
+
+## One address everywhere: `http://localhost:8317`
+
+Every machine with the service answers on `http://localhost:8317`:
+
+- on the leader, it passes requests to its own CLIProxyAPI (which now listens on `127.0.0.1:8327` only);
+- everywhere else, it forwards them over Tailscale to the leader.
+
+So `ccp`, T3 Code's proxy provider, and your scripts use `http://localhost:8317` and never need to change when the leader moves. The dashboard is at `http://localhost:8317/management.html`.
+
+Hub and standby machines also answer on their Tailscale address (`http://<machine-name>:8317`), so devices without the service (a phone, an old `spinup.py client` setup) keep working. That port is open to your tailnet only.
+
+## Install
+
+You need Tailscale installed and logged in. Get the binary for your OS from the [releases](https://github.com/darkyeg/spinup/releases) (`checksums.txt` is next to them), or build it: `go build ./cmd/spinup`.
+
+Install the hub first, then the others:
+
+```sh
+spinup install --role hub        # on the machine that normally holds the accounts
+spinup install --role standby    # asks for the dashboard password (on the hub: spinup.py show-key)
+spinup install --role client     # asks for the API key (on the hub: spinup.py show-key)
+```
+
+If the hub already runs the `spinup.py hub` proxy, the service takes it over: same logins, same keys, same dashboard password. Nothing has to be logged in again.
+
+What `install` does:
+
+1. Keys: the hub reuses `secrets.json` or makes new keys; a standby fetches them from the leader, using the dashboard password; a client only stores the API key in `ccp`.
+2. Installs CLIProxyAPI on hub/standby if it's missing (latest release, checksum-verified).
+3. Copies itself to the state folder (`%LOCALAPPDATA%\spinup` on Windows, `~/.local/share/spinup` elsewhere).
+4. Starts the service at boot, and turns off the old always-on proxy from `spinup.py hub`, which would otherwise hold the port:
+   - **Windows:** a scheduled task `spinup` that runs as your user without a logon (no stored password, no window). On hub/standby, a firewall rule opens port 8317 to `100.64.0.0/10` (Tailscale) for this program only. This is the one step that needs admin, so Windows asks once (UAC).
+   - **Linux:** a systemd user unit `spinup.service`. On hub/standby, `loginctl enable-linger` keeps it running without a login.
+   - **macOS:** a LaunchAgent `dev.spinup.daemon`. It runs while you're logged in.
+5. Writes `ccp` to point at `http://localhost:8317`.
+
+Re-running `install` repairs the machine and updates the service to the binary you ran it from.
+
+## Commands
+
+```sh
+spinup status              # who holds the accounts, how fresh this machine's copy is, each login, every machine
+spinup status --json
+spinup handoff <machine>   # move the accounts to another hub/standby, safely
+spinup lead --force        # take the accounts here (only when the leader is lost for good)
+spinup uninstall           # remove the service; logins and keys stay
+spinup daemon              # run in the foreground (what the boot task runs)
+spinup version
+```
+
+## What happens when...
+
+**...the leader refreshes a login.** Within a few seconds it pushes the new copy to every hub/standby. A copy only ever replaces an older one (each login carries its last-refresh time).
+
+**...you shut the leader down normally.** It stops its proxy, sends its final logins to a synced hub/standby, and that machine takes over. This takes under a second.
+
+**...the leader loses power or its network.** The others wait until **Tailscale's control server** has reported it offline for 3 minutes (`failover_after_seconds`). If they just can't reach it while Tailscale still sees it online, they wait instead, because it may still be using the accounts. Meanwhile, a leader that has lost Tailscale for half that time stops its own proxy. Then the best candidate (the hub first, then by name) takes over with the newest logins it can collect.
+
+**...the hub comes back.** It doesn't start its proxy. It syncs from the current leader, and the leader hands the accounts back (`auto_failback`, on by default).
+
+**...a computer sleeps.** On wake, a leader stops using the accounts until it has checked that nobody took over meanwhile.
+
+**...a token is refused anyway.** Every 30 seconds the leader looks for refused logins and takes a newer copy from another machine if one has it. If none does, the log says which account to log in again.
+
+**The one gap:** if the leader loses power within seconds of refreshing a login, before pushing it, the others have the previous token for that account, and you log that one account in again. Planned shutdowns and handoffs have no gap.
+
+## Configuration
+
+`config.json` in the state folder (written by `install`):
+
+| Field | Default | Meaning |
+|---|---|---|
+| `role` | | `hub`, `standby` or `client` |
+| `port` | `8317` | The front (`localhost`) and, on hub/standby, the Tailscale port |
+| `proxy_port` | `8327` | CLIProxyAPI's own port, `127.0.0.1` only |
+| `failover_after_seconds` | `180` | How long Tailscale must report the leader offline before another machine takes over |
+| `auto_failback` | `true` | Hand the accounts back to the hub when it returns |
+| `proxy_dir`, `auth_dir` | same as `spinup.py` | CLIProxyAPI and the logins |
+
+Restart the service after editing (re-run `spinup install`).
+
+## Security
+
+- **Tailnet only.** Nothing listens on the internet. The front listens on `127.0.0.1`; the peer port on the Tailscale address, behind a firewall rule for `100.64.0.0/10` on Windows.
+- **Logins move only with the key.** Machines authenticate to each other with the dashboard password (header `X-Spinup-Key`, constant-time compared). Clients never receive logins.
+- **Least privilege.** The service runs as your user, never as SYSTEM or root. Admin is needed once on Windows (boot task and firewall rule) and for `enable-linger` on some Linux systems.
+- **Files.** Keys and logins are written readable by your user only, atomically. Logins that disappear from the leader are moved to `<auth_dir>-removed`, never deleted.
+- Use disk encryption (BitLocker, FileVault, LUKS) on every hub and standby.
+
+## Troubleshooting
+
+- **Log:** `spinup.log` in the state folder (rotated at 5 MB). It records every decision ("decision: ...", "waiting: ...") with the reason.
+- **`spinup status` says "nobody holds them"** and shows a `Waiting` line: that line is the reason. Most often, the leader is online in Tailscale but its service doesn't answer. Check it with `spinup status` on that machine.
+- **The leader died for good** (stolen, disk gone): run `spinup lead --force` on a standby. Don't do it while the old leader could come back with newer logins.
+- **Go back to the Python setup:** run `spinup uninstall`, then `py spinup.py hub` (Windows) or `python3 spinup.py hub`. The logins and keys are unchanged.
+- **`spinup.py hub` / `client` refuse to run:** that's on purpose while the service is installed, because the two would fight over the port.
+
+## Not yet
+
+Phase 2 ([DESIGN.md](DESIGN.md#plan)): self-update, CLIProxyAPI updates by the service, the rest of `spinup.py` in the same binary.
