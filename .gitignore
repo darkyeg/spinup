@@ -1,5 +1,3 @@
-__pycache__/
-*.pyc
 secrets.json
 SECRETS.txt
 # Your private repo (docs/PRIVATE.md)
