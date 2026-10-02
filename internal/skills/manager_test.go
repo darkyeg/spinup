@@ -3,14 +3,13 @@ package skills
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 
+	"github.com/darkyeg/spinup/internal/library"
 	"github.com/darkyeg/spinup/internal/source"
 )
 
@@ -19,6 +18,7 @@ const sampleManifest = `{"agents":["claude-code","codex"],"manual":["hand"],"sou
 type fixture struct {
 	manager Manager
 	root    string
+	lib     library.Library
 	paths   paths
 	calls   []string
 	fail    map[string]bool
@@ -27,13 +27,13 @@ type fixture struct {
 func newFixture(t *testing.T, manifestText string) *fixture {
 	t.Helper()
 	root, home := t.TempDir(), t.TempDir()
-	f := &fixture{root: root, fail: map[string]bool{}, paths: paths{
+	f := &fixture{root: root, lib: library.At(filepath.Join(home, "library")), fail: map[string]bool{}, paths: paths{
 		store: filepath.Join(home, "skills"), parked: filepath.Join(home, "parked"), claude: filepath.Join(home, "claude"),
 	}}
 	write(t, filepath.Join(root, "skills", "skills.json"), manifestText)
-	write(t, filepath.Join(root, "local", "placeholder"), "")
 	f.manager = Manager{
 		src:   source.At(root),
+		lib:   f.lib,
 		paths: f.paths,
 		install: func(_ context.Context, from string, _, names []string) (string, error) {
 			f.calls = append(f.calls, from)
@@ -87,7 +87,7 @@ func TestParkable(t *testing.T) {
 
 func TestSyncInstallsLinksParksAndAppliesModes(t *testing.T) {
 	f := newFixture(t, sampleManifest)
-	write(t, filepath.Join(f.root, "skills", "local", "mine", "SKILL.md"), "---\ndescription: mine\n---\n")
+	write(t, f.lib.Path("skills/mine/SKILL.md"), "---\ndescription: mine\n---\n")
 	write(t, filepath.Join(f.paths.store, "stray", "SKILL.md"), "x")
 
 	synced, err := f.manager.Sync(context.Background())
@@ -130,11 +130,11 @@ func TestSyncParksNothingWhenAnInstallFails(t *testing.T) {
 
 func TestSyncRemovesDanglingClaudeLinks(t *testing.T) {
 	f := newFixture(t, sampleManifest)
-	write(t, filepath.Join(f.root, "skills", "local", "mine", "SKILL.md"), "x")
+	write(t, f.lib.Path("skills/mine/SKILL.md"), "x")
 	if _, err := f.manager.Sync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(filepath.Join(f.root, "skills", "local", "mine")); err != nil {
+	if err := os.RemoveAll(f.lib.Path("skills/mine")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.RemoveAll(filepath.Join(f.paths.store, "mine")); err != nil {
@@ -176,63 +176,87 @@ func TestListReportsModeSourceAndInstalledState(t *testing.T) {
 func TestRemoveWithoutMatchLeavesTheFileAlone(t *testing.T) {
 	f := newFixture(t, sampleManifest)
 
-	_, err := f.manager.Remove(context.Background(), []string{"nope"}, Shared)
+	_, err := f.manager.Remove(context.Background(), []string{"nope"})
 
 	if err == nil || len(f.calls) > 0 {
 		t.Fatalf("err = %v, installs = %v", err, f.calls)
 	}
-	data, _ := os.ReadFile(filepath.Join(f.root, "skills", "skills.json"))
-	if string(data) != sampleManifest {
-		t.Fatalf("file changed: %s", data)
+	if exists(f.lib.Path(library.SkillsList)) {
+		t.Fatal("a failed edit started your list")
 	}
 }
 
-func TestPrivateEditNeedsAPrivateRepo(t *testing.T) {
-	f := newFixture(t, sampleManifest)
-	if err := os.RemoveAll(filepath.Join(f.root, "local")); err != nil {
+func TestTheFirstEditStartsYourListFromSpinupsAndLeavesSpinupsAlone(t *testing.T) {
+	suggested := `{"_comment":"spinup's","agents":["codex"],"manual":["hand"],"sources":{"o/a":["keep","hand"]}}`
+	f := newFixture(t, suggested)
+	write(t, filepath.Join(f.paths.store, "keep", "SKILL.md"), "x")
+
+	if err := f.manager.SetMode([]string{"keep"}, Manual); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := f.manager.SetMode([]string{"keep"}, Manual, Private); err == nil {
-		t.Fatal("expected an error without local/")
+	yours, _ := os.ReadFile(f.lib.Path(library.SkillsList))
+	for _, part := range []string{`"agents": ["codex"]`, `"o/a": ["keep", "hand"]`, `"manual": ["hand", "keep"]`} {
+		if !strings.Contains(string(yours), part) {
+			t.Fatalf("your list lacks %s:\n%s", part, yours)
+		}
+	}
+	if strings.Contains(string(yours), "_comment") {
+		t.Fatalf("your list kept spinup's comment:\n%s", yours)
+	}
+	spinups, _ := os.ReadFile(filepath.Join(f.root, "skills", "skills.json"))
+	if string(spinups) != suggested {
+		t.Fatalf("spinup's list changed: %s", spinups)
 	}
 }
 
-func TestSetModeWritesManifestAndAppliesModes(t *testing.T) {
+func TestSetModeWritesYourListAndAppliesModes(t *testing.T) {
 	f := newFixture(t, sampleManifest)
 	write(t, filepath.Join(f.paths.store, "keep", "SKILL.md"), "x")
 
-	if err := f.manager.SetMode([]string{"keep"}, Manual, Shared); err != nil {
+	if err := f.manager.SetMode([]string{"keep"}, Manual); err != nil {
 		t.Fatal(err)
 	}
 
-	data, _ := os.ReadFile(filepath.Join(f.root, "skills", "skills.json"))
+	data, _ := os.ReadFile(f.lib.Path(library.SkillsList))
 	if !strings.Contains(string(data), `"manual": ["hand", "keep"]`) {
-		t.Fatalf("manifest = %s", data)
+		t.Fatalf("your list = %s", data)
 	}
 	if !exists(filepath.Join(f.paths.store, "keep", "agents", "openai.yaml")) {
 		t.Fatal("Codex policy missing")
 	}
 }
 
-func TestAddEditsPrivateListAndSyncs(t *testing.T) {
+func TestAddEditsYourListAndSyncs(t *testing.T) {
 	f := newFixture(t, sampleManifest)
 
-	if _, err := f.manager.Add(context.Background(), "o/new", []string{"fresh"}, Manual, Private); err != nil {
+	if _, err := f.manager.Add(context.Background(), "o/new", []string{"fresh"}, Manual); err != nil {
 		t.Fatal(err)
 	}
 
-	data, _ := os.ReadFile(filepath.Join(f.root, "local", "skills.json"))
+	data, _ := os.ReadFile(f.lib.Path(library.SkillsList))
 	if !strings.Contains(string(data), `"o/new": ["fresh"]`) || !reflect.DeepEqual(f.calls, []string{"o/a", "o/new"}) {
-		t.Fatalf("private manifest = %s, installs = %v", data, f.calls)
+		t.Fatalf("your list = %s, installs = %v", data, f.calls)
 	}
 }
 
-func TestSyncWithoutACheckoutParksNothingAndSaysSo(t *testing.T) {
+func TestOnceYourListExistsSpinupsIsNotUsed(t *testing.T) {
 	f := newFixture(t, sampleManifest)
-	var said []string
+	write(t, f.lib.Path(library.SkillsList), `{"agents":["codex"],"sources":{"o/yours":["only"]}}`)
+
+	if _, err := f.manager.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(f.calls, []string{"o/yours"}) {
+		t.Fatalf("installed from %v, want only your list's source", f.calls)
+	}
+}
+
+func TestWithTheBuiltInDataYourOwnSkillsStayAndStraysAreParked(t *testing.T) {
+	f := newFixture(t, sampleManifest)
 	f.manager.src = source.Builtin()
-	f.manager.logf = func(format string, a ...any) { said = append(said, fmt.Sprintf(format, a...)) }
+	write(t, f.lib.Path("skills/mine/SKILL.md"), "x")
 	write(t, filepath.Join(f.paths.store, "stray", "SKILL.md"), "x")
 
 	synced, err := f.manager.Sync(context.Background())
@@ -240,15 +264,8 @@ func TestSyncWithoutACheckoutParksNothingAndSaysSo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(synced.Parked) > 0 || !exists(filepath.Join(f.paths.store, "stray")) {
-		t.Fatalf("parked %v", synced.Parked)
-	}
-	if !slices.Contains(said, ParkingSkipped) {
-		t.Fatalf("said %q", said)
-	}
-	unlisted, err := f.manager.Unlisted()
-	if err != nil || len(unlisted) > 0 {
-		t.Fatalf("Unlisted = %v, %v", unlisted, err)
+	if !reflect.DeepEqual(synced.Parked, []string{"stray"}) || !exists(filepath.Join(f.paths.store, "mine", "SKILL.md")) {
+		t.Fatalf("parked %v; your own skill installed: %v", synced.Parked, exists(filepath.Join(f.paths.store, "mine")))
 	}
 }
 
@@ -275,7 +292,7 @@ func TestUnlistedCountsLinkedSkillDirsLikeSyncDoes(t *testing.T) {
 
 func TestPublishParksARealDirectoryInsteadOfDeletingIt(t *testing.T) {
 	f := newFixture(t, sampleManifest)
-	write(t, filepath.Join(f.root, "skills", "local", "mine", "SKILL.md"), "ours")
+	write(t, f.lib.Path("skills/mine/SKILL.md"), "ours")
 	write(t, filepath.Join(f.paths.claudeSkills(), "mine", "notes.txt"), "the user's")
 
 	if _, err := f.manager.Sync(context.Background()); err != nil {

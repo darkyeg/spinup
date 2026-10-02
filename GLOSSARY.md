@@ -7,8 +7,8 @@ The words spinup uses, in the code, the commands and the docs. Use these and not
 - **Machine**: a computer you code on that runs spinup. Its **name** is its Tailscale name, which other machines type to reach it.
 - **Tailnet**: your private Tailscale network. It is the only list of machines; the repo keeps none.
 - **Device**: anything on the tailnet, with or without spinup (a phone, a server).
-- **Checkout**: your clone of the spinup repo. Commands that change the repo's data edit it, and you commit the change.
-- **Private repo**: your own repo cloned into `local/` inside the checkout, for personal skills, instructions and notes.
+- **Library**: the folder with what is yours, `~/.spinup`: your skills list, own skills and instructions.
+- **Checkout**: a clone of the spinup repo, for working on spinup itself; spinup then uses its data in place of the built-in copy.
 
 ## Accounts
 
@@ -31,6 +31,6 @@ The words spinup uses, in the code, the commands and the docs. Use these and not
 
 - **Skill**: a folder with a `SKILL.md` that Claude Code and Codex load.
 - **Auto / manual**: an auto skill runs when the agent decides; a manual one only when you call it (`/name`, `$name`).
-- **Own skill**: a skill kept as a folder in the repo (`skills/local/`) or the private repo (`local/skills/`).
+- **Own skill**: a skill you keep as a folder in your library (`~/.spinup/skills/`).
 - **Parked skill**: an installed skill not on the list, moved aside so no agent loads it.
-- **Agent config**: the shared instructions, subagents and settings in `agents/`.
+- **Agent config**: spinup's instructions, subagents and settings (`agents/`), plus your library's `AGENTS.md`.

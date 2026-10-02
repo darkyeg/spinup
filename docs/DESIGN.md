@@ -67,7 +67,7 @@ spinup is built around a **single writer**: at any moment, exactly one machine m
 
 - `spinup update` checks GitHub Releases, verifies the new version, swaps the binary and restarts the accounts service on it.
 - CLIProxyAPI is updated the same way on a hub or standby (latest release, checksum-verified), and the proxy is restarted through the local service.
-- Skills, agent instructions and settings come from your checkout (or the copy built into the binary); `spinup setup` pulls the checkout and your private layer (`local/`, a git repo you control).
+- spinup's suggested skills, instructions and settings are built into the binary (or come from a checkout when you work on spinup); yours live in your library, `~/.spinup` ([LIBRARY.md](LIBRARY.md)).
 
 ## Commands
 

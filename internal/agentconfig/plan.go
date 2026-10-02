@@ -1,4 +1,4 @@
-// Package agentconfig keeps the shared Claude Code and Codex configuration on this machine in step with the repo.
+// Package agentconfig keeps the Claude Code and Codex configuration on this machine in step with spinup's and yours.
 package agentconfig
 
 import (
@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/darkyeg/spinup/internal/host"
+	"github.com/darkyeg/spinup/internal/library"
 	"github.com/darkyeg/spinup/internal/source"
 )
 
@@ -27,6 +28,12 @@ type Homes struct{ Claude, Codex string }
 // HostHomes are this machine's real folders.
 func HostHomes() Homes { return Homes{Claude: host.ClaudeHome(), Codex: host.CodexHome()} }
 
+// Sources are where the configuration comes from: spinup's data, then your library's instructions.
+type Sources struct {
+	Spinup source.Source
+	Yours  library.Library
+}
+
 // File is a managed file and the content it should have.
 type File struct {
 	Path    string
@@ -34,9 +41,9 @@ type File struct {
 }
 
 // Plan lists every managed file with the content it should have on this machine.
-func Plan(src source.Source, homes Homes) ([]File, error) {
-	data := src.Data()
-	instructions, err := instructionsText(data, src.Private())
+func Plan(from Sources, homes Homes) ([]File, error) {
+	data := from.Spinup.Data()
+	instructions, err := instructionsText(data, from.Yours.Files())
 	if err != nil {
 		return nil, err
 	}
@@ -61,15 +68,12 @@ func Plan(src source.Source, homes Homes) ([]File, error) {
 	return append(append(files, settings...), codex...), nil
 }
 
-func instructionsText(data, private fs.FS) (string, error) {
+func instructionsText(data, yours fs.FS) (string, error) {
 	text, err := fs.ReadFile(data, "agents/"+instructionsFile)
 	if err != nil {
 		return "", err
 	}
-	if private == nil {
-		return string(text), nil
-	}
-	personal, err := fs.ReadFile(private, instructionsFile)
+	personal, err := fs.ReadFile(yours, library.Instructions)
 	if errors.Is(err, fs.ErrNotExist) {
 		return string(text), nil
 	}

@@ -88,7 +88,7 @@ func TestNetwork(t *testing.T) {
 	}
 }
 
-func TestAgentsToolsReposUpdate(t *testing.T) {
+func TestAgentsToolsUpdate(t *testing.T) {
 	if got := levels(Agents(nil, nil, nil, 3)); len(got) != 2 || got[0] != OK || got[1] != OK {
 		t.Errorf("all matching: %v", got)
 	}
@@ -97,9 +97,6 @@ func TestAgentsToolsReposUpdate(t *testing.T) {
 	}
 	if Failures([]Section{Tools([]string{"rg"}, 12)}) != 1 || Failures([]Section{Tools(nil, 12)}) != 0 {
 		t.Error("missing tools fail, none missing passes")
-	}
-	if s := Repos([]Checkout{{Name: "spinup checkout", Behind: 2, Dirty: true}}); !has(s, Warn, "2 commits behind") || !has(s, Warn, "not pushed") {
-		t.Errorf("behind and dirty must warn: %+v", s.Checks)
 	}
 	for _, c := range []struct {
 		running, latest string

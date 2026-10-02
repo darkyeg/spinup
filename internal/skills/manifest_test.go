@@ -14,24 +14,6 @@ func mustParse(t *testing.T, text string) document {
 	return doc
 }
 
-func TestMergeAddsPrivateSourcesAndManual(t *testing.T) {
-	shared := mustParse(t, `{"agents":["claude-code"],"manual":["b"],"sources":{"o/a":["x"],"o/b":["y"]}}`)
-	private := mustParse(t, `{"manual":["a","b"],"sources":{"o/a":["x","z"],"o/c":["w"]}}`)
-
-	got := merge(shared, private)
-
-	want := manifest{
-		agents: []string{"claude-code"},
-		manual: []string{"a", "b"},
-		sources: []sourceEntry{
-			{"o/a", []string{"x", "z"}}, {"o/b", []string{"y"}}, {"o/c", []string{"w"}},
-		},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %+v, want %+v", got, want)
-	}
-}
-
 func TestRenderKeepsKeyOrderAndOneLinePerSource(t *testing.T) {
 	doc := mustParse(t, `{
   "_comment": "keep <as is> & more",

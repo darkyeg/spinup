@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/darkyeg/spinup/internal/atomicfile"
+	"github.com/darkyeg/spinup/internal/library"
 	"github.com/darkyeg/spinup/internal/source"
 )
 
@@ -140,14 +141,15 @@ func TestParseWanted(t *testing.T) {
 	}
 }
 
-func fixture(t *testing.T) (source.Source, Homes) {
+func fixture(t *testing.T) (Sources, Homes) {
 	t.Helper()
 	repo, home := t.TempDir(), t.TempDir()
 	put(t, filepath.Join(repo, "agents/AGENTS.md"), "shared\n\n")
 	put(t, filepath.Join(repo, "agents/claude/agents/Explore.md"), "explore\n")
 	put(t, filepath.Join(repo, "agents/claude/settings.json"), `{"_comment": "x", "outputStyle": "Concise"}`)
 	put(t, filepath.Join(repo, "agents/codex/config.toml"), "model = \"m\"\n\n[agents]\nlevel = \"low\"\n")
-	return source.At(repo), Homes{Claude: filepath.Join(home, "claude"), Codex: filepath.Join(home, "codex")}
+	yours := library.At(filepath.Join(home, "library"))
+	return Sources{source.At(repo), yours}, Homes{Claude: filepath.Join(home, "claude"), Codex: filepath.Join(home, "codex")}
 }
 
 func put(t *testing.T, path, text string) {
@@ -203,10 +205,9 @@ func TestInstallKeepsUserSettingsAndBacksUpOnce(t *testing.T) {
 	}
 }
 
-func TestInstallAppendsPrivateInstructionsAndKeepsCodexComments(t *testing.T) {
+func TestInstallAppendsYourInstructionsAndKeepsCodexComments(t *testing.T) {
 	src, homes := fixture(t)
-	checkout, _ := src.Checkout()
-	put(t, filepath.Join(checkout, source.PrivateDir, "AGENTS.md"), "mine\n")
+	put(t, src.Yours.Path(library.Instructions), "mine\n")
 	config := filepath.Join(homes.Codex, "config.toml")
 	put(t, config, "# keep\nmodel = \"old\"\n\n[agents]\nlevel = \"high\"\n\n[other]\nz = 1\n")
 	if _, err := Install(src, homes); err != nil {
@@ -240,7 +241,7 @@ func TestRepoDataPlansOnAnEmptyMachine(t *testing.T) {
 		t.Fatal(err)
 	}
 	home := t.TempDir()
-	files, err := Plan(source.At(root), Homes{Claude: filepath.Join(home, "c"), Codex: filepath.Join(home, "x")})
+	files, err := Plan(Sources{source.At(root), library.At(t.TempDir())}, Homes{Claude: filepath.Join(home, "c"), Codex: filepath.Join(home, "x")})
 	if err != nil || len(files) < 5 {
 		t.Fatalf("plan: %d files, %v", len(files), err)
 	}

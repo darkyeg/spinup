@@ -1,15 +1,12 @@
 package agentconfig
 
-import (
-	"github.com/darkyeg/spinup/internal/atomicfile"
-	"github.com/darkyeg/spinup/internal/source"
-)
+import "github.com/darkyeg/spinup/internal/atomicfile"
 
 const newFileMode = 0o644
 
 // Install writes the managed files that differ, backing each existing one up once; it returns the paths written.
-func Install(src source.Source, homes Homes) ([]string, error) {
-	files, err := Plan(src, homes)
+func Install(from Sources, homes Homes) ([]string, error) {
+	files, err := Plan(from, homes)
 	if err != nil {
 		return nil, err
 	}
@@ -30,9 +27,9 @@ func Install(src source.Source, homes Homes) ([]string, error) {
 	return written, nil
 }
 
-// Drifted lists the managed files that are missing or differ from the repo.
-func Drifted(src source.Source, homes Homes) ([]string, error) {
-	files, err := Plan(src, homes)
+// Drifted lists the managed files that are missing or differ from what Plan wants.
+func Drifted(from Sources, homes Homes) ([]string, error) {
+	files, err := Plan(from, homes)
 	if err != nil {
 		return nil, err
 	}

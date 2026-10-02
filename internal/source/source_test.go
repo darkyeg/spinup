@@ -27,15 +27,6 @@ func TestFindsTheCheckoutAboveAFolder(t *testing.T) {
 	if dir, err := got.Checkout(); err != nil || dir != root {
 		t.Fatalf("checkout %q, %v; want %q", dir, err, root)
 	}
-	if got.Private() != nil {
-		t.Error("no local/ folder, yet a private repo was found")
-	}
-	if err := os.Mkdir(filepath.Join(root, PrivateDir), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if Find(deep).Private() == nil {
-		t.Error("local/ exists, yet no private repo was found")
-	}
 }
 
 func TestTheBuiltInCopyHasTheData(t *testing.T) {

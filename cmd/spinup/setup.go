@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/darkyeg/spinup/internal/config"
-	"github.com/darkyeg/spinup/internal/shell"
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
@@ -35,7 +34,6 @@ type setupStep struct {
 
 func (c setupCmd) Run() error {
 	ctx := context.Background()
-	pullCheckouts(ctx)
 	repo := repoData()
 	name, err := c.machineName(ctx)
 	if err != nil {
@@ -109,24 +107,6 @@ func currentMachineName(ctx context.Context) string {
 	}
 	hostname, _ := os.Hostname()
 	return strings.Trim(notNameChars.ReplaceAllString(strings.ToLower(hostname), "-"), "-")
-}
-
-// pullCheckouts brings the spinup checkout and the private repo up to date, so every machine applies the same data.
-func pullCheckouts(ctx context.Context) {
-	repo := repoData()
-	dir, err := repo.Checkout()
-	if err != nil {
-		return
-	}
-	dirs := []string{dir}
-	if private, ok := repo.PrivatePath(); ok {
-		dirs = append(dirs, private)
-	}
-	for _, d := range dirs {
-		if _, err := shell.Output(ctx, "git", "-C", d, "pull", "--ff-only", "-q"); err != nil {
-			step("Couldn't update %s (offline, or local changes); using it as it is", d)
-		}
-	}
 }
 
 func printAddresses(ctx context.Context, name string) {

@@ -14,19 +14,17 @@ import (
 	"unicode/utf8"
 
 	"github.com/darkyeg/spinup/internal/atomicfile"
+	"github.com/darkyeg/spinup/internal/library"
 	"github.com/darkyeg/spinup/internal/shell"
 	"github.com/darkyeg/spinup/internal/source"
 )
 
-// ParkingSkipped is said when Sync leaves unlisted skills alone because it can only see the built-in list.
-const ParkingSkipped = "parking skipped: no spinup checkout here"
-
-// OwnSource is the Source of skills that ship as folders instead of coming from a skills repo.
-const OwnSource = "own (skills/local, local/skills)"
+// OwnSource is the Source of your own skills, the folders in your library.
+const OwnSource = "your own"
 
 const (
-	sharedManifest  = "skills/skills.json"
-	privateManifest = "skills.json"
+	// suggestedList is spinup's list, used until you change yours.
+	suggestedList   = "skills/skills.json"
 	failureTailSize = 800
 	tokenChars      = 4
 )
@@ -44,21 +42,6 @@ func (m Mode) String() string {
 		return "manual"
 	}
 	return "auto"
-}
-
-// Scope picks which skills list an edit changes: the spinup repo's, or your private one.
-type Scope int
-
-const (
-	Shared Scope = iota
-	Private
-)
-
-func (s Scope) String() string {
-	if s == Private {
-		return "private"
-	}
-	return "shared"
 }
 
 type Skill struct {
@@ -92,17 +75,18 @@ type installer func(ctx context.Context, source string, agents, names []string) 
 
 type Manager struct {
 	src     source.Source
+	lib     library.Library
 	paths   paths
 	install installer
 	logf    func(format string, a ...any)
 }
 
-// New reports progress through logf, which may be nil.
-func New(src source.Source, logf func(format string, a ...any)) Manager {
+// New reads spinup's suggested list from src and yours from lib; it reports progress through logf, which may be nil.
+func New(src source.Source, lib library.Library, logf func(format string, a ...any)) Manager {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	return Manager{src: src, paths: hostPaths(), install: npxInstall, logf: logf}
+	return Manager{src: src, lib: lib, paths: hostPaths(), install: npxInstall, logf: logf}
 }
 
 // Sync installs every listed skill, links your own, parks the unlisted and applies the modes.
@@ -148,7 +132,7 @@ func (m Manager) installSources(ctx context.Context, list manifest) (failed []st
 }
 
 func (m Manager) publishOwn(ctx context.Context) ([]ownSkill, error) {
-	own, err := findOwn(m.src.Data(), m.src.Private())
+	own, err := findOwn(m.lib.Files())
 	if err != nil {
 		return nil, err
 	}
@@ -169,10 +153,6 @@ func (m Manager) publishOwn(ctx context.Context) ([]ownSkill, error) {
 }
 
 func (m Manager) parkUnlisted(keep []string, failedInstalls int) ([]string, error) {
-	if !m.seesOwnSkills() {
-		m.logf("%s", ParkingSkipped)
-		return nil, nil
-	}
 	installed, err := m.paths.installed()
 	if err != nil {
 		return nil, err
@@ -187,22 +167,13 @@ func (m Manager) parkUnlisted(keep []string, failedInstalls int) ([]string, erro
 	return parked, nil
 }
 
-// seesOwnSkills is false for the built-in copy, which can't see the skills kept in a checkout or the private repo.
-func (m Manager) seesOwnSkills() bool {
-	_, err := m.src.Checkout()
-	return err == nil
-}
-
-// Unlisted returns the installed skills that Sync would park; without a checkout it can't tell, so none.
+// Unlisted returns the installed skills that Sync would park.
 func (m Manager) Unlisted() ([]string, error) {
-	if !m.seesOwnSkills() {
-		return nil, nil
-	}
 	list, err := m.manifest()
 	if err != nil {
 		return nil, err
 	}
-	own, err := findOwn(m.src.Data(), m.src.Private())
+	own, err := findOwn(m.lib.Files())
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +190,7 @@ func (m Manager) List() ([]Skill, error) {
 	if err != nil {
 		return nil, err
 	}
-	own, err := findOwn(m.src.Data(), m.src.Private())
+	own, err := findOwn(m.lib.Files())
 	if err != nil {
 		return nil, err
 	}
@@ -253,8 +224,8 @@ func (m Manager) describe(name, from string, manual []string) Skill {
 }
 
 // Add lists names from source, as manual skills when mode is Manual, then runs Sync.
-func (m Manager) Add(ctx context.Context, from string, names []string, mode Mode, scope Scope) (Synced, error) {
-	err := m.edit(scope, func(d *document) error {
+func (m Manager) Add(ctx context.Context, from string, names []string, mode Mode) (Synced, error) {
+	err := m.edit(func(d *document) error {
 		d.add(from, names, mode)
 		return nil
 	})
@@ -265,10 +236,10 @@ func (m Manager) Add(ctx context.Context, from string, names []string, mode Mode
 }
 
 // Remove unlists names, then runs Sync, which parks them.
-func (m Manager) Remove(ctx context.Context, names []string, scope Scope) (Synced, error) {
-	err := m.edit(scope, func(d *document) error {
+func (m Manager) Remove(ctx context.Context, names []string) (Synced, error) {
+	err := m.edit(func(d *document) error {
 		if !d.remove(names) {
-			return fmt.Errorf("none of %s is in the %s skills list", strings.Join(names, ", "), scope)
+			return fmt.Errorf("none of %s is in your skills list", strings.Join(names, ", "))
 		}
 		return nil
 	})
@@ -279,8 +250,8 @@ func (m Manager) Remove(ctx context.Context, names []string, scope Scope) (Synce
 }
 
 // SetMode switches names between auto and manual and re-applies the modes without installing.
-func (m Manager) SetMode(names []string, mode Mode, scope Scope) error {
-	err := m.edit(scope, func(d *document) error {
+func (m Manager) SetMode(names []string, mode Mode) error {
+	err := m.edit(func(d *document) error {
 		d.setMode(names, mode)
 		return nil
 	})
@@ -291,7 +262,7 @@ func (m Manager) SetMode(names []string, mode Mode, scope Scope) error {
 	if err != nil {
 		return err
 	}
-	own, err := findOwn(m.src.Data(), m.src.Private())
+	own, err := findOwn(m.lib.Files())
 	if err != nil {
 		return err
 	}
@@ -302,18 +273,17 @@ func (m Manager) SetMode(names []string, mode Mode, scope Scope) error {
 	return nil
 }
 
-func (m Manager) edit(scope Scope, change func(*document) error) error {
-	path, err := m.manifestPath(scope)
+// edit changes your list; the first edit starts it as a copy of spinup's.
+func (m Manager) edit(change func(*document) error) error {
+	doc, err := m.document()
 	if err != nil {
 		return err
 	}
-	doc, err := readDocument(os.DirFS(filepath.Dir(path)), filepath.Base(path))
-	if err != nil {
-		return err
-	}
+	doc.obj.remove(keyComment)
 	if err := change(&doc); err != nil {
 		return err
 	}
+	path := m.lib.Path(library.SkillsList)
 	if err := atomicfile.Write(path, doc.render(), 0o644); err != nil {
 		return err
 	}
@@ -321,40 +291,32 @@ func (m Manager) edit(scope Scope, change func(*document) error) error {
 	return nil
 }
 
-func (m Manager) manifestPath(scope Scope) (string, error) {
-	if scope == Private {
-		dir, ok := m.src.PrivatePath()
-		if !ok {
-			return "", errors.New("there is no private repo (local/) to hold your own skills list")
-		}
-		return filepath.Join(dir, privateManifest), nil
-	}
-	root, err := m.src.Checkout()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, filepath.FromSlash(sharedManifest)), nil
+func (m Manager) manifest() (manifest, error) {
+	doc, err := m.document()
+	return doc.manifest(), err
 }
 
-func (m Manager) manifest() (manifest, error) {
-	shared, err := readDocument(m.src.Data(), sharedManifest)
+// document is your list when you have one, otherwise spinup's.
+func (m Manager) document() (document, error) {
+	data, err := fs.ReadFile(m.lib.Files(), library.SkillsList)
+	if errors.Is(err, fs.ErrNotExist) {
+		return readDocument(m.src.Data(), suggestedList)
+	}
 	if err != nil {
-		return manifest{}, err
+		return document{}, err
 	}
-	var private document
-	if root := m.src.Private(); root != nil {
-		if private, err = readDocument(root, privateManifest); err != nil {
-			return manifest{}, err
-		}
-	}
-	return merge(shared, private), nil
+	return parsed(m.lib.Path(library.SkillsList), data)
 }
 
 func readDocument(root fs.FS, name string) (document, error) {
 	data, err := fs.ReadFile(root, name)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err != nil {
 		return document{}, err
 	}
+	return parsed(name, data)
+}
+
+func parsed(name string, data []byte) (document, error) {
 	doc, err := parseDocument(data)
 	if err != nil {
 		return document{}, fmt.Errorf("%s: %w", name, err)

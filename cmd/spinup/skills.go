@@ -20,16 +20,9 @@ type skillsCmd struct {
 	Auto   skillsAutoCmd   `cmd:"" help:"Let the agent use skills by itself."`
 }
 
-// listScope picks the shared list (skills/skills.json) or the private one (local/skills.json).
-type listScope struct {
-	Private bool `help:"Edit your private list (local/skills.json), used only on your machines."`
-}
-
-func (s listScope) scope() skills.Scope {
-	if s.Private {
-		return skills.Private
-	}
-	return skills.Shared
+func (skillsCmd) Help() string {
+	return `Your skills list and your own skills live in your library, ~/.spinup. Until you change the
+list, spinup's suggested one is used; your first change copies it there.`
 }
 
 type skillsSyncCmd struct{}
@@ -61,7 +54,6 @@ type skillsAddCmd struct {
 	From   string   `arg:"" placeholder:"OWNER/REPO" help:"The GitHub repo the skills come from, e.g. anthropics/skills."`
 	Names  []string `arg:"" name:"skill" help:"Skill names in that repo."`
 	Manual bool     `help:"Install them as manual: they run only when you call them."`
-	listScope
 }
 
 func (c skillsAddCmd) Run() error {
@@ -69,34 +61,31 @@ func (c skillsAddCmd) Run() error {
 	if c.Manual {
 		mode = skills.Manual
 	}
-	return reportSynced(skillManager(repoData()).Add(context.Background(), c.From, c.Names, mode, c.scope()))
+	return reportSynced(skillManager(repoData()).Add(context.Background(), c.From, c.Names, mode))
 }
 
 type skillsRemoveCmd struct {
 	Names []string `arg:"" name:"skill" help:"Skills to take off the list."`
-	listScope
 }
 
 func (c skillsRemoveCmd) Run() error {
-	return reportSynced(skillManager(repoData()).Remove(context.Background(), c.Names, c.scope()))
+	return reportSynced(skillManager(repoData()).Remove(context.Background(), c.Names))
 }
 
 type skillsManualCmd struct {
 	Names []string `arg:"" name:"skill"`
-	listScope
 }
 
 func (c skillsManualCmd) Run() error {
-	return skillManager(repoData()).SetMode(c.Names, skills.Manual, c.scope())
+	return skillManager(repoData()).SetMode(c.Names, skills.Manual)
 }
 
 type skillsAutoCmd struct {
 	Names []string `arg:"" name:"skill"`
-	listScope
 }
 
 func (c skillsAutoCmd) Run() error {
-	return skillManager(repoData()).SetMode(c.Names, skills.Auto, c.scope())
+	return skillManager(repoData()).SetMode(c.Names, skills.Auto)
 }
 
 func syncSkills(ctx context.Context, repo source.Source) error {
@@ -110,4 +99,6 @@ func reportSynced(s skills.Synced, err error) error {
 	return err
 }
 
-func skillManager(repo source.Source) skills.Manager { return skills.New(repo, step) }
+func skillManager(repo source.Source) skills.Manager {
+	return skills.New(repo, yourLibrary(repo), step)
+}

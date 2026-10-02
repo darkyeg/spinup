@@ -1,5 +1,6 @@
-// Package source finds the data spinup applies: the user's checkout of the spinup repo, where edits
-// can be committed and so reach every machine, or else the copy built into the binary.
+// Package source finds spinup's own data (the suggested skills, the instructions, the tools): a checkout
+// of the spinup repo when you work on spinup itself, or else the copy built into the binary. What is
+// yours lives in your library instead (internal/library).
 package source
 
 import (
@@ -11,11 +12,7 @@ import (
 	"github.com/darkyeg/spinup"
 )
 
-// PrivateDir is the user's private repo, cloned inside the checkout and ignored by git.
-const PrivateDir = "local"
-
-var ErrNoCheckout = errors.New("this changes the spinup repo, so it needs your checkout: " +
-	"clone it, then run spinup inside it (or set SPINUP_REPO)")
+var ErrNoCheckout = errors.New("no spinup checkout here: spinup uses its built-in data")
 
 type Source struct {
 	data     fs.FS
@@ -42,31 +39,12 @@ func At(root string) Source { return Source{data: os.DirFS(root), checkout: root
 // Data is the repo's files: agents/, tools.json, skills/*.json.
 func (s Source) Data() fs.FS { return s.data }
 
-// Checkout is the repo folder, for commands that edit it.
+// Checkout is the repo folder, when spinup runs from one.
 func (s Source) Checkout() (string, error) {
 	if s.checkout == "" {
 		return "", ErrNoCheckout
 	}
 	return s.checkout, nil
-}
-
-// Private is the private repo's files, or nil when there is none.
-func (s Source) Private() fs.FS {
-	dir, ok := s.PrivatePath()
-	if !ok {
-		return nil
-	}
-	return os.DirFS(dir)
-}
-
-// PrivatePath is the private repo's folder, when there is one.
-func (s Source) PrivatePath() (string, bool) {
-	if s.checkout == "" {
-		return "", false
-	}
-	dir := filepath.Join(s.checkout, PrivateDir)
-	info, err := os.Stat(dir)
-	return dir, err == nil && info.IsDir()
 }
 
 func candidates(saved string) []string {

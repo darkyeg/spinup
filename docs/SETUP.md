@@ -24,14 +24,14 @@ Done when: you know the name and the hold. If the user didn't say and `spinup st
 
 The script installs the release binary into `~/.local/bin` (checksum-verified). Open a new terminal if `spinup` is not found.
 
-If the user edits skills or agent config, also clone this repo and, if they keep one, their private repo into `local/` ([PRIVATE.md](PRIVATE.md)). Run spinup from inside the clone (or set `SPINUP_REPO`) so it uses and edits that checkout; otherwise it uses the copy built into the binary.
+The user's own skills and instructions live in their library, `~/.spinup` ([LIBRARY.md](LIBRARY.md)); nothing needs cloning.
 Done when: `spinup --version` prints a version.
 
 ## 3. Set up the machine
 
 `spinup setup <name> [--hub|--standby]`
 
-It pulls the checkout and private repo, then runs: Tailscale, the accounts service, dev tools (`tools.json`), skills, agent config. It prints the machine's addresses and ends with `spinup doctor`. Tailscale and the accounts service must succeed or setup stops; the other steps are reported at the end, so fix them and re-run.
+It runs: Tailscale, the accounts service, dev tools (`tools.json`), skills, agent config. It prints the machine's addresses and ends with `spinup doctor`. Tailscale and the accounts service must succeed or setup stops; the other steps are reported at the end, so fix them and re-run.
 
 - Tailscale asks the user to open a printed URL and sign in with the **same Tailscale account** as the other machines.
 - Hub: makes the keys. Standby: asks for the dashboard password (the user gets it on the hub with `spinup keys`; or `SPINUP_PASSWORD`). Never-hold: asks for the API key once (`spinup keys` on the hub; or `SPINUP_API_KEY`).
@@ -58,5 +58,5 @@ Done when: the client's T3 lists the hub as Connected over a `*.ts.net` URL (not
 
 ## 7. Record it
 
-Run `spinup doctor` and fix every `[XX]` it prints (each comes with its fix). If the user keeps a private repo in `local/` ([PRIVATE.md](PRIVATE.md)), note this machine in `local/MACHINES.md` and push it.
-Done when: doctor ends with "All good." and the push succeeded.
+Run `spinup doctor` and fix every `[XX]` it prints (each comes with its fix).
+Done when: doctor ends with "All good."

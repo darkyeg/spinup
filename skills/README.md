@@ -13,14 +13,14 @@ spinup skills manual <skill>           # runs only when you call it: /skill (Cla
 spinup skills auto <skill>             # the agent may use it by itself again
 ```
 
-Add `--private` to `add`, `remove`, `manual` or `auto` to change only **your** machines: it edits `local/skills.json` in your private repo ([docs/PRIVATE.md](../docs/PRIVATE.md)) instead of the shared `skills.json`.
+They edit **your** list, `~/.spinup/skills.json` in your library ([docs/LIBRARY.md](../docs/LIBRARY.md)). Until your first edit, spinup's suggested list (`skills.json` here) is used; the first edit copies it.
 
 **Auto or manual?** Auto skills cost tokens in every session but trigger on their own. Manual skills cost nothing until you type `/name`. Make workflows you start yourself (planning, handoffs, PR writing) manual; keep auto the ones you want the agent to reach for unprompted (debugging, TDD, verification).
 
 ## Files
 
-- `skills.json`: the global list. `sources` maps a GitHub repo to skill names (`-s` takes the skill's frontmatter `name`, which can differ from its folder). `manual` lists skills that only run when called.
-- Your own skills: folders with a `SKILL.md` in `skills/local/` (shared) or `local/skills/` (private). They are copied to `~/.agents/skills` and linked into `~/.claude/skills`.
+- `skills.json`: spinup's suggested list. `sources` maps a GitHub repo to skill names (`-s` takes the skill's frontmatter `name`, which can differ from its folder). `manual` lists skills that only run when called.
+- Your own skills: folders with a `SKILL.md` in `~/.spinup/skills/`. They are copied to `~/.agents/skills` and linked into `~/.claude/skills`.
 - Parked skills: `~/.agents/skills-parked`. Move one back, or `skills add` it, to use it again.
 
 ## Per-repo skills

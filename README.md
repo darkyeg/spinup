@@ -79,21 +79,20 @@ Prefer your agent to do it? Tell it *"set up this machine with spinup"*: it foll
 - **Names, not IPs.** Tailscale gives each machine a fixed private address and the name you chose. At home traffic goes straight over your router; away, directly over the internet, or through an encrypted relay when it must.
 - **No machine list to keep.** Tailscale is the list; spinup reads it.
 - **One holder at a time.** A standby takes over only when Tailscale itself reports the holder offline for three minutes, never just because it can't reach it. Planned moves wait for running requests and never cut one; requests sent during any switch wait for the new holder instead of failing. In plain words: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md); the full safety design: [docs/DESIGN.md](docs/DESIGN.md). Day-to-day use: [docs/SERVICE.md](docs/SERVICE.md).
-- **One source of truth.** Fork this repo to make it yours: skills, instructions, settings and tools live in it, and `setup` pulls your latest version first.
+- **Yours stays on your machines.** Your skills list, own skills and instructions live in your library (`~/.spinup`), not in a repo: no GitHub account, nothing to pull.
 
 ## Make it yours
 
-Fork the repo and clone your fork; spinup uses the checkout it runs in (or `SPINUP_REPO`).
-
-| Change | Edit, then run |
+| Change | Do |
 |---|---|
-| Skills on every machine | `spinup skills add <owner/repo> <skill>` / `remove <skill>` |
+| Your skills | `spinup skills add <owner/repo> <skill>` / `remove <skill>` |
 | Which skills run by themselves | `spinup skills list` shows auto/manual and the token cost; `spinup skills manual <skill>` |
-| Skills per project type (Go, Next.js, ...) | `skills/per-repo.json` → `spinup repo <path> --apply` |
-| Instructions and settings | `agents/` → `spinup agents` |
-| Dev tools | `tools.json` → `spinup tools` |
+| Your own skills | a folder with a `SKILL.md` in `~/.spinup/skills/`, then `spinup skills` |
+| Your instructions | `~/.spinup/AGENTS.md`, then `spinup agents` |
 
-**Personal things** (your preferences, private skills, notes about your machines) go in a private repo cloned into `local/`; the public repo ignores it: [docs/PRIVATE.md](docs/PRIVATE.md). Why the defaults are what they are: [docs/WHY.md](docs/WHY.md). Using the accounts from T3 Code: [docs/T3-PROXY.md](docs/T3-PROXY.md).
+All of it lives in your library: [docs/LIBRARY.md](docs/LIBRARY.md). Why spinup's defaults are what they are: [docs/WHY.md](docs/WHY.md). Using the accounts from T3 Code: [docs/T3-PROXY.md](docs/T3-PROXY.md).
+
+To change spinup's own defaults (suggested skills, stack rules in `skills/per-repo.json`, `agents/`, `tools.json`), fork the repo: spinup uses the checkout it runs in (or `SPINUP_REPO`).
 
 ## Security
 

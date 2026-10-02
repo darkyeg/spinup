@@ -12,6 +12,7 @@ const (
 	keyAgents  = "agents"
 	keyManual  = "manual"
 	keySources = "sources"
+	keyComment = "_comment"
 )
 
 type sourceEntry struct {
@@ -175,21 +176,8 @@ func (d *document) setMode(names []string, mode Mode) {
 	d.manual = sortedUnion(without(d.manual, names), nil)
 }
 
-func merge(shared, private document) manifest {
-	merged := manifest{agents: shared.agents}
-	for _, e := range shared.sources {
-		merged.sources = append(merged.sources, sourceEntry{e.Source, slices.Clone(e.Names)})
-	}
-	for _, e := range private.sources {
-		i := slices.IndexFunc(merged.sources, func(m sourceEntry) bool { return m.Source == e.Source })
-		if i < 0 {
-			merged.sources = append(merged.sources, sourceEntry{Source: e.Source})
-			i = len(merged.sources) - 1
-		}
-		merged.sources[i].Names = appendMissing(merged.sources[i].Names, e.Names)
-	}
-	merged.manual = sortedUnion(shared.manual, private.manual)
-	return merged
+func (d document) manifest() manifest {
+	return manifest{agents: d.agents, manual: d.manual, sources: d.sources}
 }
 
 func appendMissing(list, more []string) []string {

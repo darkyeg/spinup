@@ -161,7 +161,7 @@ func loginsCheck(r api.Report, port int) Check {
 	return ok(label)
 }
 
-// Agents checks skills and agent config against the repo.
+// Agents checks the skills and the agent config against spinup's data and your library.
 func Agents(notInstalled, unlisted, drifted []string, listed int) Section {
 	s := Section{Title: "Agents"}
 	var problems []string
@@ -177,34 +177,10 @@ func Agents(notInstalled, unlisted, drifted []string, listed int) Section {
 		s.Checks = append(s.Checks, ok(fmt.Sprintf("skills: %d installed, none extra", listed)))
 	}
 	if len(drifted) > 0 {
-		s.Checks = append(s.Checks, fail(fmt.Sprintf("%d agent config %s differ from the repo: %s", len(drifted),
-			plural(len(drifted), "file", "files"), strings.Join(drifted, ", ")), "spinup agents"))
+		s.Checks = append(s.Checks, fail(fmt.Sprintf("%d agent config %s out of date: %s", len(drifted),
+			plural(len(drifted), "file is", "files are"), strings.Join(drifted, ", ")), "spinup agents"))
 	} else {
-		s.Checks = append(s.Checks, ok("instructions, subagents and settings match the repo"))
-	}
-	return s
-}
-
-// Checkout is a git repo's state against GitHub.
-type Checkout struct {
-	Name          string
-	Ahead, Behind int
-	Dirty         bool
-}
-
-// Repos checks the spinup checkout and the private repo.
-func Repos(checkouts []Checkout) Section {
-	s := Section{Title: "Repos"}
-	for _, c := range checkouts {
-		if c.Behind > 0 {
-			s.Checks = append(s.Checks, warn(fmt.Sprintf("%s: %d %s behind GitHub", c.Name, c.Behind, plural(c.Behind, "commit", "commits")), "spinup setup (pulls and applies)"))
-		}
-		if c.Ahead > 0 || c.Dirty {
-			s.Checks = append(s.Checks, warn(c.Name+": local changes not pushed", "commit and push, so your other machines get them"))
-		}
-		if c.Behind == 0 && c.Ahead == 0 && !c.Dirty {
-			s.Checks = append(s.Checks, ok(c.Name+": up to date with GitHub"))
-		}
+		s.Checks = append(s.Checks, ok("instructions, subagents and settings are as spinup and your library set them"))
 	}
 	return s
 }

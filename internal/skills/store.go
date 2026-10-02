@@ -9,9 +9,9 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/darkyeg/spinup/internal/host"
+	"github.com/darkyeg/spinup/internal/library"
 	"github.com/darkyeg/spinup/internal/shell"
 )
 
@@ -37,39 +37,27 @@ type ownSkill struct {
 	files fs.FS
 }
 
-func findOwn(shared, private fs.FS) ([]ownSkill, error) {
-	byName := map[string]ownSkill{}
-	for _, base := range []struct {
-		root fs.FS
-		dir  string
-	}{{shared, "skills/local"}, {private, "skills"}} {
-		if base.root == nil {
+// findOwn lists the skill folders in your library, sorted by name.
+func findOwn(lib fs.FS) ([]ownSkill, error) {
+	entries, err := fs.ReadDir(lib, library.SkillsDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var found []ownSkill
+	for _, entry := range entries {
+		dir := path.Join(library.SkillsDir, entry.Name())
+		if _, err := fs.Stat(lib, path.Join(dir, skillFile)); err != nil {
 			continue
 		}
-		entries, err := fs.ReadDir(base.root, base.dir)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
+		files, err := fs.Sub(lib, dir)
 		if err != nil {
 			return nil, err
 		}
-		for _, entry := range entries {
-			dir := path.Join(base.dir, entry.Name())
-			if _, err := fs.Stat(base.root, path.Join(dir, skillFile)); err != nil {
-				continue
-			}
-			files, err := fs.Sub(base.root, dir)
-			if err != nil {
-				return nil, err
-			}
-			byName[entry.Name()] = ownSkill{entry.Name(), files}
-		}
+		found = append(found, ownSkill{entry.Name(), files})
 	}
-	var found []ownSkill
-	for _, skill := range byName {
-		found = append(found, skill)
-	}
-	slices.SortFunc(found, func(a, b ownSkill) int { return strings.Compare(a.name, b.name) })
 	return found, nil
 }
 
