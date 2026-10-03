@@ -131,6 +131,31 @@ func TestTrackerDatesChangesAndKeepsATakenDate(t *testing.T) {
 	}
 }
 
+func TestTrackerRemembersDeletionOfTheLastFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "stamp.json")
+	tr, err := NewTracker(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	before, err := tr.Observe("instructions", first, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Stamp{ChangedAt: first.Add(time.Minute)}
+	got, err := tr.Observe("", time.Time{}, want.ChangedAt)
+	if err != nil || got != want || Compare(got, before) != Give {
+		t.Fatalf("deletion = %+v, %v; want %+v newer than %+v", got, err, want, before)
+	}
+	reloaded, err := NewTracker(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reloaded.Observe("", time.Time{}, first.Add(time.Hour)); err != nil || got != want {
+		t.Fatalf("deletion after restart = %+v, %v; want %+v", got, err, want)
+	}
+}
+
 func TestATrackerWithoutMemoryDatesTheLibraryByItsFiles(t *testing.T) {
 	tr, err := NewTracker(filepath.Join(t.TempDir(), "stamp.json"))
 	if err != nil {

@@ -45,3 +45,41 @@ func TestTakenLibraryKeepsItsAgeAfterTrackerLoss(t *testing.T) {
 		})
 	}
 }
+
+func TestDeletingLastLibraryFileReachesAnotherMachine(t *testing.T) {
+	makeShare := func() *libraryShare {
+		m := New(Options{Library: library.At(t.TempDir()), StatePath: filepath.Join(t.TempDir(), "state.json"), Log: log.New(io.Discard, "", 0)})
+		m.openLibrary()
+		return m.library
+	}
+	source, other := makeShare(), makeShare()
+	now := time.Now().UTC()
+	path := source.lib.Path(library.Instructions)
+	if err := os.WriteFile(path, []byte("instructions"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := source.snapshot(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.take(before, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := source.snapshot(now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.take(deleted, now.Add(time.Minute)); err != nil {
+		t.Fatalf("deletion was refused: %v", err)
+	}
+	if _, err := os.Stat(other.lib.Path(library.Instructions)); !os.IsNotExist(err) {
+		t.Fatalf("the deleted instructions remain: %v", err)
+	}
+	otherState, err := other.state(now.Add(2 * time.Minute))
+	if err != nil || otherState.Stamp != deleted.Stamp {
+		t.Fatalf("received deletion = %+v, %v; want %+v", otherState.Stamp, err, deleted.Stamp)
+	}
+}
