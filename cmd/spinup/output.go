@@ -14,7 +14,11 @@ func orNone(s, none string) string {
 	return s
 }
 
-func interactive() bool {
-	info, err := os.Stdin.Stat()
+// interactive reports that a person is at the keyboard, so asking questions is welcome. A script, a pipe
+// or the service must never be left waiting for an answer nobody can see.
+func interactive() bool { return isTerminal(os.Stdin) && isTerminal(os.Stdout) }
+
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }

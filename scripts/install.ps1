@@ -13,11 +13,26 @@ $base = "https://github.com/$repo/releases/latest/download"
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ("spinup-" + [guid]::NewGuid())
 New-Item -ItemType Directory $tmp | Out-Null
 try {
-    Invoke-WebRequest -UseBasicParsing "$base/$asset" -OutFile "$tmp\$asset"
-    Invoke-WebRequest -UseBasicParsing "$base/checksums.txt" -OutFile "$tmp\checksums.txt"
+    Write-Host "Downloading $asset from $repo..."
+    # Invoke-WebRequest shows its own progress bar, but only while $ProgressPreference allows it.
+    $ProgressPreference = 'Continue'
+    try {
+        Invoke-WebRequest -UseBasicParsing "$base/$asset" -OutFile "$tmp\$asset"
+    } catch {
+        throw "spinup: could not download $asset. Check your connection, and that $repo has a release with that file: https://github.com/$repo/releases/latest"
+    }
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+        Invoke-WebRequest -UseBasicParsing "$base/checksums.txt" -OutFile "$tmp\checksums.txt"
+    } catch {
+        throw "spinup: $repo's latest release has no checksums.txt, so the download cannot be verified."
+    }
+
+    Write-Host 'Checking the download...'
     $want = (Get-Content "$tmp\checksums.txt" | Where-Object { ($_ -split '\s+')[1] -eq $asset } | ForEach-Object { ($_ -split '\s+')[0] })
     $got = (Get-FileHash -Algorithm SHA256 "$tmp\$asset").Hash.ToLower()
-    if (-not $want -or $want -ne $got) { throw "spinup: checksum mismatch for $asset; nothing installed" }
+    if (-not $want) { throw "spinup: checksums.txt does not list $asset; nothing installed" }
+    if ($want -ne $got) { throw "spinup: checksum mismatch for $asset; nothing installed`n  expected $want`n  got      $got" }
 
     $dest = Join-Path $HOME '.local\bin'
     New-Item -ItemType Directory -Force $dest | Out-Null

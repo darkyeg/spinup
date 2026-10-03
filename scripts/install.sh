@@ -20,16 +20,36 @@ base="https://github.com/${repo}/releases/latest/download"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-curl -fsSL -o "$tmp/$asset" "$base/$asset"
-curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt"
+# A progress bar needs a terminal; piped into a log, -# would write thousands of lines.
+if [ -t 2 ]; then progress=-#; else progress=-s; fi
+
+echo "Downloading $asset from $repo..."
+if ! curl -fL $progress -o "$tmp/$asset" "$base/$asset"; then
+  echo "spinup: could not download $asset." >&2
+  echo "  Check your connection, and that $repo has a release with that file:" >&2
+  echo "  https://github.com/${repo}/releases/latest" >&2
+  exit 1
+fi
+if ! curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt"; then
+  echo "spinup: $repo's latest release has no checksums.txt, so the download cannot be verified." >&2
+  exit 1
+fi
+
+echo "Checking the download..."
 want="$(awk -v a="$asset" '$2 == a {print $1}' "$tmp/checksums.txt")"
 if command -v sha256sum >/dev/null 2>&1; then
   got="$(sha256sum "$tmp/$asset" | awk '{print $1}')"
 else
   got="$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')"
 fi
-if [ -z "$want" ] || [ "$want" != "$got" ]; then
+if [ -z "$want" ]; then
+  echo "spinup: checksums.txt does not list $asset; nothing installed" >&2
+  exit 1
+fi
+if [ "$want" != "$got" ]; then
   echo "spinup: checksum mismatch for $asset; nothing installed" >&2
+  echo "  expected $want" >&2
+  echo "  got      $got" >&2
   exit 1
 fi
 

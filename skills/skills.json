@@ -1,18 +1,5 @@
 {
-  "_comment": "spinup's suggested skills for Claude Code + Codex. Your first `spinup skills add|remove|manual|auto` copies this list to your library (~/.spinup/skills.json), which is used from then on. Keep the list small: every auto-triggered skill's description costs tokens in every session. Stack-specific skills go per repo (per-repo.json). `manual`: installed, but only run when called (/name, $name).",
-  "agents": ["claude-code", "codex"],
+  "_comment": "spinup suggests no skills: which skills you want is yours to decide, not spinup's. A fresh machine installs nothing and parks nothing. Your own skills are folders in ~/.spinup/skills (`spinup skills new|import|adopt`); `spinup skills add <owner/repo> <skill>` fetches one from GitHub when you ask for it. Your first `spinup skills add|remove|manual|auto` copies this file to your library (~/.spinup/skills.json) and uses that from then on. Keep the list small: every auto-triggered skill's description costs tokens in every session. `manual`: installed, but only run when called (/name, $name). Which agents get them is not listed here: spinup installs for the agents it finds on each machine.",
   "manual": [],
-  "sources": {
-    "mattpocock/skills": [
-      "code-review", "codebase-design", "diagnosing-bugs", "domain-modeling",
-      "grilling", "grill-with-docs", "handoff", "implement",
-      "improve-codebase-architecture", "pr", "prototype", "research",
-      "setup-matt-pocock-skills", "tdd", "to-spec", "to-tickets",
-      "wayfinder", "writing-for-agents"
-    ],
-    "vercel-labs/agent-skills": ["web-design-guidelines"],
-    "anthropics/skills": ["frontend-design"],
-    "JuliusBrussee/caveman": ["caveman", "caveman-commit"],
-    "obra/superpowers": ["verification-before-completion"]
-  }
+  "sources": {}
 }

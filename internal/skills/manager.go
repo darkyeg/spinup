@@ -19,8 +19,8 @@ import (
 	"github.com/darkyeg/spinup/internal/source"
 )
 
-// OwnSource is the Source of your own skills, the folders in your library.
-const OwnSource = "your own"
+// OwnSource is the Source of skills that live in your library (~/.spinup/skills): yours, and shared between your machines.
+const OwnSource = "your library"
 
 const (
 	// suggestedList is spinup's list, used until you change yours.
@@ -105,14 +105,14 @@ func (m Manager) Sync(ctx context.Context) (Synced, error) {
 		return Synced{}, err
 	}
 	failed := m.installSources(ctx, list)
-	if err := m.forgetUnlisted(list.listed()); err != nil {
-		return Synced{}, err
-	}
 	own, err := m.publishOwn(ctx)
 	if err != nil {
 		return Synced{}, err
 	}
 	keep := keepList(list, own)
+	if err := m.paths.linkAll(ctx, keep); err != nil {
+		return Synced{}, err
+	}
 	parked, err := m.parkUnlisted(keep, len(failed))
 	if err != nil {
 		return Synced{}, err
@@ -123,7 +123,7 @@ func (m Manager) Sync(ctx context.Context) (Synced, error) {
 	if err := m.paths.applyModes(keep, list.manual); err != nil {
 		return Synced{}, err
 	}
-	synced := Synced{Count: len(keep), Agents: list.agents, Parked: parked, Failed: failed}
+	synced := Synced{Count: len(keep), Agents: agentNames(m.paths.agentsHere()), Parked: parked, Failed: failed}
 	if len(failed) > 0 {
 		return synced, fmt.Errorf("install failed for: %s (nothing was parked)", strings.Join(failed, ", "))
 	}
@@ -134,7 +134,7 @@ func (m Manager) Sync(ctx context.Context) (Synced, error) {
 // only the ones the library doesn't have yet.
 func (m Manager) installSources(ctx context.Context, list manifest) (failed []string) {
 	for _, entry := range list.sources {
-		if err := m.fetchMissing(ctx, entry, list.agents); err != nil {
+		if err := m.fetchMissing(ctx, entry, agentNames(m.paths.agentsHere())); err != nil {
 			failed = append(failed, entry.Source)
 			m.logf("%s", err)
 			continue
@@ -158,7 +158,7 @@ func (m Manager) fetchMissing(ctx context.Context, entry sourceEntry, agents []s
 	case len(missing) == 0:
 		return nil
 	case m.install == nil:
-		return fmt.Errorf("%s: %s not in your library yet; run `spinup skills` on a machine with Node.js",
+		return fmt.Errorf("%s: %s not in your library yet; run `spinup skills sync` on a machine with Node.js",
 			entry.Source, strings.Join(missing, ", "))
 	}
 	m.logf("Fetching from %s: %s", entry.Source, strings.Join(missing, ", "))
@@ -166,11 +166,49 @@ func (m Manager) fetchMissing(ctx context.Context, entry sourceEntry, agents []s
 		return fmt.Errorf("%s", tail(output+err.Error(), failureTailSize))
 	}
 	for _, name := range missing {
-		if err := m.keepCopy(name); err != nil {
+		if err := m.adopt(name); err != nil {
 			return fmt.Errorf("%s: keeping a copy of %s: %w", entry.Source, name, err)
 		}
 	}
 	return nil
+}
+
+// adopt settles a freshly fetched skill under the name you asked for, then keeps a copy for your other
+// machines. A skill's folder and the name in its SKILL.md can differ, and the list goes by the name.
+func (m Manager) adopt(name string) error {
+	folder, err := m.fetchedFolder(name)
+	if err != nil {
+		return err
+	}
+	if folder != name {
+		under := filepath.Join(m.paths.store, name)
+		if err := removeAny(under); err != nil {
+			return err
+		}
+		if err := atomicfile.Rename(filepath.Join(m.paths.store, folder), under); err != nil {
+			return fmt.Errorf("it arrived as %q: %w", folder, err)
+		}
+		m.logf("%s arrived in a folder called %s; keeping it as %s.", name, folder, name)
+	}
+	return m.keepCopy(name)
+}
+
+// fetchedFolder is the folder the fetch left the skill in: the one named after it, or the one whose
+// SKILL.md calls itself name.
+func (m Manager) fetchedFolder(name string) (string, error) {
+	if fileExists(filepath.Join(m.paths.store, name, skillFile)) {
+		return name, nil
+	}
+	installed, err := m.paths.installed()
+	if err != nil {
+		return "", err
+	}
+	for _, folder := range installed {
+		if calledName(m.paths.store, folder) == name {
+			return folder, nil
+		}
+	}
+	return "", fmt.Errorf("it isn't in %s after fetching; check that the repo has a skill called %q", m.paths.store, name)
 }
 
 // keepCopy saves a freshly fetched skill into your library, for your other machines; a copy is whole or absent.
@@ -210,25 +248,6 @@ func (m Manager) installFetched(ctx context.Context, names []string) error {
 	return nil
 }
 
-// forgetUnlisted drops the library's copies of skills no longer on the list.
-func (m Manager) forgetUnlisted(listed []string) error {
-	entries, err := os.ReadDir(m.lib.Path(library.Fetched))
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !slices.Contains(listed, entry.Name()) {
-			if err := os.RemoveAll(m.fetchedCopy(entry.Name())); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (m Manager) fetchedCopy(name string) string {
 	return m.lib.Path(library.Fetched + "/" + name)
 }
@@ -237,11 +256,6 @@ func (m Manager) publishOwn(ctx context.Context) ([]ownSkill, error) {
 	own, err := findOwn(m.lib.Files())
 	if err != nil {
 		return nil, err
-	}
-	for _, dir := range []string{m.paths.store, m.paths.claudeSkills()} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, err
-		}
 	}
 	for _, skill := range own {
 		if err := m.paths.publish(ctx, skill); err != nil {
@@ -340,18 +354,50 @@ func (m Manager) Add(ctx context.Context, from string, names []string, mode Mode
 	return m.Sync(ctx)
 }
 
-// Remove unlists names, then runs Sync, which parks them.
+// Remove unlists names and drops the library folder of any that are your own, then runs Sync, which
+// parks the installed copies. Nothing is lost: the parked copy is the skill as it was.
 func (m Manager) Remove(ctx context.Context, names []string) (Synced, error) {
-	err := m.edit(func(d *document) error {
-		if !d.remove(names) {
-			return fmt.Errorf("none of %s is in your skills list", strings.Join(names, ", "))
-		}
-		return nil
-	})
+	mine, listed, err := m.splitOwn(names)
 	if err != nil {
 		return Synced{}, err
 	}
+	if len(mine) == 0 && len(listed) == 0 {
+		return Synced{}, fmt.Errorf("none of %s is in your skills list or your own skills",
+			strings.Join(names, ", "))
+	}
+	if len(listed) > 0 {
+		if err := m.edit(func(d *document) error { d.remove(listed); return nil }); err != nil {
+			return Synced{}, err
+		}
+	}
+	for _, name := range mine {
+		if err := os.RemoveAll(m.ownPath(name)); err != nil {
+			return Synced{}, fmt.Errorf("removing your skill %s: %w", name, err)
+		}
+	}
 	return m.Sync(ctx)
+}
+
+// splitOwn sorts names into the ones that are your own skills and the ones on your list, dropping any
+// that are neither so the caller can tell nothing was matched.
+func (m Manager) splitOwn(names []string) (mine, listed []string, err error) {
+	own, err := findOwn(m.lib.Files())
+	if err != nil {
+		return nil, nil, err
+	}
+	onList, err := m.manifest()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, name := range names {
+		switch {
+		case slices.ContainsFunc(own, func(s ownSkill) bool { return s.name == name }):
+			mine = append(mine, name)
+		case slices.Contains(onList.listed(), name):
+			listed = append(listed, name)
+		}
+	}
+	return mine, listed, nil
 }
 
 // SetMode switches names between auto and manual and re-applies the modes without installing.

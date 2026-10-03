@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	keyAgents  = "agents"
 	keyManual  = "manual"
 	keySources = "sources"
 	keyComment = "_comment"
@@ -21,7 +20,6 @@ type sourceEntry struct {
 }
 
 type manifest struct {
-	agents  []string
 	manual  []string
 	sources []sourceEntry
 }
@@ -36,7 +34,6 @@ func (m manifest) listed() []string {
 
 type document struct {
 	obj     object
-	agents  []string
 	manual  []string
 	sources []sourceEntry
 }
@@ -47,11 +44,6 @@ func parseDocument(data []byte) (document, error) {
 		return document{}, err
 	}
 	doc := document{obj: obj, manual: []string{}}
-	if raw, ok := obj.get(keyAgents); ok {
-		if err := json.Unmarshal(raw, &doc.agents); err != nil {
-			return document{}, fmt.Errorf("agents: %w", err)
-		}
-	}
 	if raw, ok := obj.get(keyManual); ok {
 		if err := json.Unmarshal(raw, &doc.manual); err != nil {
 			return document{}, fmt.Errorf("manual: %w", err)
@@ -111,8 +103,6 @@ func (d document) renderValue(key string) string {
 		return renderSources(d.sources)
 	case keyManual:
 		return spaced(encode(nonNil(d.manual)))
-	case keyAgents:
-		return spaced(encode(nonNil(d.agents)))
 	}
 	return spaced(d.obj.values[key])
 }
@@ -183,7 +173,7 @@ func (d *document) setMode(names []string, mode Mode) {
 }
 
 func (d document) manifest() manifest {
-	return manifest{agents: d.agents, manual: d.manual, sources: d.sources}
+	return manifest{manual: d.manual, sources: d.sources}
 }
 
 func appendMissing(list, more []string) []string {

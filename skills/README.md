@@ -5,13 +5,18 @@ Every installed skill's description sits in the agent's context in **every** ses
 ## Commands
 
 ```bash
-spinup skills                          # install the list on this machine, park anything not on it
-spinup skills list                     # every skill: auto or manual, where from, token cost
+spinup skills                          # interactive list: remove, restore, keep, rename (--plain prints it)
+spinup skills sync                     # install the list on this machine, park anything not on it
+spinup skills new <skill>              # start a skill of your own in your library
+spinup skills import <path|zip>        # take a skill someone sent you into your library
 spinup skills add <owner/repo> <skill> # add from a GitHub repo and install (--manual to add as manual)
-spinup skills remove <skill>           # take it off the list (it gets parked, not deleted)
-spinup skills manual <skill>           # runs only when you call it: /skill (Claude Code), $skill (Codex)
-spinup skills auto <skill>             # the agent may use it by itself again
+spinup skills remove [skill...]        # take it off the list (parked, not deleted); no name: pick from a list
+spinup skills manual [skill...]        # runs only when you call it: /skill (Claude Code), $skill (Codex)
+spinup skills auto [skill...]          # the agent may use it by itself again
 ```
+
+The bare command never changes anything, so it is safe to run first: it reports what is missing, what is
+installed but not in your library, and any two skills answering to one name. `sync` is what applies it.
 
 They edit **your** list, `~/.spinup/skills.json` in your library ([docs/LIBRARY.md](../docs/LIBRARY.md)). Until your first edit, spinup's suggested list (`skills.json` here) is used; the first edit copies it.
 
@@ -20,7 +25,7 @@ They edit **your** list, `~/.spinup/skills.json` in your library ([docs/LIBRARY.
 ## Files
 
 - `skills.json`: spinup's suggested list. `sources` maps a GitHub repo to skill names (`-s` takes the skill's frontmatter `name`, which can differ from its folder). `manual` lists skills that only run when called.
-- Your own skills: folders with a `SKILL.md` in `~/.spinup/skills/`. They are copied to `~/.agents/skills` and linked into `~/.claude/skills`.
+- Your own skills: folders with a `SKILL.md` in `~/.spinup/skills/`. `spinup skills new` and `import` write them for you. They are copied to `~/.agents/skills` and linked into `~/.claude/skills` and `~/.codex/skills`.
 - Fetched copies: `~/.spinup/fetched/<name>/`. A skill on your list is fetched from GitHub once, on the machine where you add it; every other machine installs this copy, which spinup shares with your library.
 - Parked skills: `~/.agents/skills-parked`. Move one back, or `skills add` it, to use it again.
 

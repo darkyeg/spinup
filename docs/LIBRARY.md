@@ -15,7 +15,7 @@ Everything is optional. Without a library, spinup uses its suggested skills and 
 ## How it fills
 
 - **Skills list:** it starts as spinup's suggested list. Your first `spinup skills add`, `remove`, `manual` or `auto` copies that list into `skills.json` and changes the copy; from then on your list is the one used.
-- **Own skills:** drop a folder with a `SKILL.md` into `skills/`, then run `spinup skills`. It is installed for Claude Code and Codex like the others.
+- **Own skills:** `spinup skills new <name>` starts one, `spinup skills import <path|zip>` takes one someone sent you. Both write a folder with a `SKILL.md` into `skills/` and install it for Claude Code and Codex. Dropping a folder in by hand and running `spinup skills sync` does the same.
 - **Instructions:** write `AGENTS.md`, then run `spinup agents`. It is added after spinup's instructions in `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`.
 
 `SPINUP_LIBRARY` moves the library to another folder.
@@ -26,7 +26,7 @@ Change your library on any machine (a `spinup skills` command, or by hand) and w
 
 - **Through the hub or standby.** The spinup service on each machine compares libraries with the machine holding the accounts, and the hub and standbys compare with each other. So a change reaches everyone as long as a hub or standby is on.
 - **The newest change wins.** If two machines change the library at nearly the same time, the later change is kept on all machines.
-- **Commands start from the newest.** `spinup skills` commands first bring in a newer library from your other machines, so your change builds on it.
+- **Commands start from the newest.** `spinup skills` commands first bring in a newer library from your other machines, so your change builds on it. You never wait for the 15 seconds: the command pulls straight away.
 - **A new machine never overwrites yours.** A library you never changed loses to any library you did, so a new machine takes yours.
 - **Skills are fetched once.** The machine where you add a skill fetches it from GitHub (with Node.js) and keeps a copy in `fetched/`; the other machines install that copy, without Node.js or GitHub.
 - **Only your machines.** Libraries travel inside your tailnet, and only to and from machines that know your API key.

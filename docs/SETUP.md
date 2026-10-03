@@ -55,12 +55,20 @@ Clone the user's active repos into the machine's usual folder (`~/personal`, `~/
 Then run `spinup repo <clone> --apply` for each: it adds the stack's skills and rewrites SSH-alias remotes like `gh:owner/repo` (T3 Code groups the same repo across machines by its github.com URL).
 Done when: `spinup repo <clone>` prints "Nothing to do" for each clone (AGENTS.md size warnings may remain).
 
-## 6. T3 Code
+## 6. HTTPS certificates
+
+Turn them on **once per tailnet**, by its owner: https://login.tailscale.com/admin/dns → **HTTPS Certificates** → Enable. It is a tailnet-wide setting, so a second machine never needs it again; a second *tailnet* (a friend's) does.
+
+Certificates are issued for the full MagicDNS name only (`<name>.<tailnet>.ts.net`), never for the short name. Everything spinup does between machines stays plain HTTP on port 8317 (`http://<name>:8317`) and is unaffected. What needs the certificate is `tailscale serve`, and so T3 Code's pairing link: without it, pairing hangs.
+
+Done when: `spinup doctor` no longer warns about HTTPS certificates, and `tailscale status --json` lists the machine under `CertDomains`.
+
+## 7. T3 Code
 
 Install T3 Code. On the hub: Settings → Connections → enable **Tailscale HTTPS** and create a pairing link. On another machine: Add environment → paste that link. Then follow [T3-PROXY.md](T3-PROXY.md) to add the proxy-backed provider instances.
 Done when: the client's T3 lists the hub as Connected over a `*.ts.net` URL (not a `192.168.*` address).
 
-## 7. Record it
+## 8. Record it
 
 Run `spinup doctor` and fix every `[XX]` it prints (each comes with its fix).
 Done when: doctor ends with "All good."

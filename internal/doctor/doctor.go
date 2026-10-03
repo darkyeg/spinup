@@ -172,7 +172,7 @@ func Agents(notInstalled, unlisted, drifted []string, listed int) Section {
 		problems = append(problems, "unlisted "+strings.Join(unlisted, ", "))
 	}
 	if len(problems) > 0 {
-		s.Checks = append(s.Checks, fail("skills: "+strings.Join(problems, "; "), "spinup skills"))
+		s.Checks = append(s.Checks, fail("skills: "+strings.Join(problems, "; "), "spinup skills sync"))
 	} else {
 		s.Checks = append(s.Checks, ok(fmt.Sprintf("skills: %d installed, none extra", listed)))
 	}
