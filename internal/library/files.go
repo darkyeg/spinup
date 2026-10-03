@@ -189,6 +189,9 @@ func yours(p string) bool {
 	return slices.Contains(yourParts, top)
 }
 
+// shared paths are merged between machines rather than replaced, so a fetched copy reaches a machine
+// that cannot fetch. Merging only ever adds: a machine that drops a skill from its list keeps the copy
+// as a cache, because deleting it would only have a partner send it back, forever.
 func shared(p string) bool {
 	top, _ := split(p)
 	return yours(p) || top == Fetched

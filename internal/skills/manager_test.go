@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -28,7 +29,8 @@ func newFixture(t *testing.T, manifestText string) *fixture {
 	t.Helper()
 	root, home := t.TempDir(), t.TempDir()
 	f := &fixture{root: root, lib: library.At(filepath.Join(home, "library")), fail: map[string]bool{}, paths: paths{
-		store: filepath.Join(home, "skills"), parked: filepath.Join(home, "parked"), claude: filepath.Join(home, "claude"),
+		store: filepath.Join(home, "skills"), parked: filepath.Join(home, "parked"),
+		claude: filepath.Join(home, "claude"), codex: filepath.Join(home, "codex"),
 	}}
 	write(t, filepath.Join(root, "skills", "skills.json"), manifestText)
 	f.manager = Manager{
@@ -336,7 +338,7 @@ func TestPublishParksARealDirectoryInsteadOfDeletingIt(t *testing.T) {
 	}
 }
 
-func TestSyncFetchesOnceAndKeepsACopyInYourLibrary(t *testing.T) {
+func TestSyncFetchesOnceAndKeepsEveryCopyInYourLibrary(t *testing.T) {
 	f := newFixture(t, sampleManifest)
 	write(t, f.lib.Path("fetched/dropped/SKILL.md"), "no longer listed")
 
@@ -355,8 +357,8 @@ func TestSyncFetchesOnceAndKeepsACopyInYourLibrary(t *testing.T) {
 			t.Errorf("no copy of %s in the library", name)
 		}
 	}
-	if exists(f.lib.Path("fetched/dropped")) {
-		t.Error("the copy of a skill no longer listed stayed")
+	if !exists(f.lib.Path("fetched/dropped/SKILL.md")) {
+		t.Error("a copy of a skill no longer listed was deleted; a partner would only send it back")
 	}
 }
 
@@ -388,5 +390,48 @@ func TestOfflineSaysWhatTheLibraryLacksAndParksNothing(t *testing.T) {
 	}
 	if !exists(filepath.Join(f.paths.store, "stray")) {
 		t.Fatal("parked a skill while the list couldn't be installed")
+	}
+}
+
+func TestCodexGetsEverySkillClaudeCodeGetsEvenWhenTheStoreAlreadyHadIt(t *testing.T) {
+	f := newFixture(t, sampleManifest)
+	write(t, f.lib.Path("fetched/keep/SKILL.md"), "---\ndescription: cached\n---\n")
+	write(t, f.lib.Path("fetched/hand/SKILL.md"), "---\ndescription: cached\n---\n")
+	write(t, filepath.Join(f.paths.store, "keep", "SKILL.md"), "---\ndescription: already here\n---\n")
+
+	if _, err := f.manager.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(f.calls) != 0 {
+		t.Fatalf("a cached skill should not be fetched again: %v", f.calls)
+	}
+	for _, name := range []string{"keep", "hand"} {
+		for _, dir := range f.paths.agentSkills() {
+			if !exists(filepath.Join(dir, name, "SKILL.md")) {
+				t.Fatalf("%s is not linked into %s", name, dir)
+			}
+		}
+	}
+}
+
+func TestParkingRemovesTheSkillFromEveryAgentNotJustClaudeCode(t *testing.T) {
+	f := newFixture(t, sampleManifest)
+	write(t, f.lib.Path("skills/mine/SKILL.md"), "x")
+	if _, err := f.manager.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(f.lib.Path("skills/mine")); err != nil {
+		t.Fatal(err)
+	}
+
+	synced, err := f.manager.Sync(context.Background())
+	if err != nil || !slices.Contains(synced.Parked, "mine") {
+		t.Fatalf("parked %v, %v", synced.Parked, err)
+	}
+	for _, dir := range f.paths.agentSkills() {
+		if _, err := os.Lstat(filepath.Join(dir, "mine")); !os.IsNotExist(err) {
+			t.Fatalf("%s still links a parked skill: %v", dir, err)
+		}
 	}
 }

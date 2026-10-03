@@ -62,3 +62,27 @@ func TestParkingWaitsForAnOpenSkillFile(t *testing.T) {
 		})
 	}
 }
+
+func TestAJunctionToTheRightPlaceIsLeftAlone(t *testing.T) {
+	p := newFixture(t, sampleManifest).paths
+	target := filepath.Join(p.store, "kept")
+	write(t, filepath.Join(target, skillFile), "x")
+	link := filepath.Join(p.claudeSkills(), "kept")
+	if err := os.MkdirAll(p.claudeSkills(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.linkDir(link, target); err != nil {
+		t.Fatal(err)
+	}
+
+	if !alreadyLinks(link, target) {
+		at, err := os.Readlink(link)
+		t.Fatalf("a junction spinup just made reads as %q (%v); it should be recognised", at, err)
+	}
+	if alreadyLinks(link, filepath.Join(p.store, "elsewhere")) {
+		t.Fatal("a junction to somewhere else should not count as already linked")
+	}
+	if err := p.linkDir(link, target); err != nil {
+		t.Fatalf("re-linking the same junction should do nothing: %v", err)
+	}
+}

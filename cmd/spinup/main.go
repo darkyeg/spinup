@@ -63,5 +63,8 @@ func main() {
 	if child := (childExit{}); errors.As(err, &child) {
 		os.Exit(child.code)
 	}
+	if errors.Is(err, errCancelled) {
+		return
+	}
 	ctx.FatalIfErrorf(err)
 }
