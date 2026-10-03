@@ -47,6 +47,9 @@ func TestAdoptCopiesAnOldPrivateRepoOnce(t *testing.T) {
 		t.Fatal("copied a file the library doesn't use")
 	}
 
+	if err := os.RemoveAll(lib.Path(SkillsDir)); err != nil {
+		t.Fatal(err)
+	}
 	put(t, lib.Path(Instructions), "edited here")
 	if adopted, err := lib.Adopt(old); err != nil || len(adopted) != 0 {
 		t.Fatalf("second adopt copied %v (%v), want nothing", adopted, err)

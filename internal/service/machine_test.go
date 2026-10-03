@@ -23,6 +23,7 @@ import (
 	"github.com/darkyeg/spinup/internal/atomicfile"
 	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/leadership"
+	"github.com/darkyeg/spinup/internal/library"
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
@@ -176,6 +177,8 @@ type testMachine struct {
 	m       *Machine
 	logbook *logbook
 	proxy   *fakeProxy
+	lib     library.Library
+	applied atomic.Int32
 	stop    context.CancelFunc
 	done    chan struct{}
 }
@@ -195,7 +198,11 @@ func newTestTailnet(t *testing.T) *testTailnet {
 }
 
 func (tn *testTailnet) add(name string, hold config.Hold) *testMachine {
-	tm := &testMachine{name: name, hold: hold, dir: tn.t.TempDir(), front: freeAddr(tn.t), peerAPI: freeAddr(tn.t), logbook: &logbook{}}
+	dir := tn.t.TempDir()
+	tm := &testMachine{
+		name: name, hold: hold, dir: dir, front: freeAddr(tn.t), peerAPI: freeAddr(tn.t), logbook: &logbook{},
+		lib: library.At(filepath.Join(dir, "library")),
+	}
 	tn.all[name] = tm
 	tn.net.mu.Lock()
 	tn.net.peerAPI[name] = tm.peerAPI
@@ -220,6 +227,11 @@ func (tn *testTailnet) start(tm *testMachine) {
 		StatePath: filepath.Join(tm.dir, "state.json"), FrontListen: tm.front, PeerListen: tm.peerAPI,
 		Tick: 50 * time.Millisecond, HandBackIdle: 100 * time.Millisecond,
 		PeerAddr: func(name, _ string) string { return tn.net.addr(name) },
+		Library:  tm.lib, LibraryEvery: 200 * time.Millisecond,
+		ApplyLibrary: func(context.Context) error {
+			tm.applied.Add(1)
+			return nil
+		},
 	}
 	if tm.hold.CanHold() {
 		o.Proxy, o.Secrets.ManagementPassword = tm.proxy, "m"
@@ -861,4 +873,67 @@ func TestALeaderThatLosesTailscaleStopsEvenWhileItWaitsForRunningAnswers(t *test
 	tn.shutDown(hub)
 	tn.shutDown(sb)
 	tn.assertOneProxyAtATime()
+}
+
+func (tn *testTailnet) waitForLibraryFile(tm *testMachine, name, want string) {
+	tn.t.Helper()
+	tn.waitFor(fmt.Sprintf("%s's %s says %q", tm.name, name, want), func() bool {
+		data, err := os.ReadFile(tm.lib.Path(name))
+		return err == nil && string(data) == want
+	})
+}
+
+func putLibraryFile(t *testing.T, tm *testMachine, name, content string) {
+	t.Helper()
+	path := tm.lib.Path(name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestALibraryChangeOnAnyMachineReachesEveryMachine(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	sb := tn.add("sb", config.HoldStandby)
+	laptop := tn.add("laptop", config.HoldNever)
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	tn.start(sb)
+	tn.start(laptop)
+	tn.waitFor("the laptop uses the hub", func() bool { return laptop.m.Report().LeaderAddr != "" })
+
+	putLibraryFile(t, laptop, library.Instructions, "written on the laptop")
+	tn.waitForLibraryFile(hub, library.Instructions, "written on the laptop")
+	tn.waitForLibraryFile(sb, library.Instructions, "written on the laptop")
+
+	time.Sleep(20 * time.Millisecond)
+	putLibraryFile(t, sb, library.Instructions, "then on the standby")
+	putLibraryFile(t, sb, "skills/mine/SKILL.md", "own skill")
+	tn.waitForLibraryFile(laptop, library.Instructions, "then on the standby")
+	tn.waitForLibraryFile(laptop, "skills/mine/SKILL.md", "own skill")
+	tn.waitFor("the laptop installs the library it took", func() bool { return laptop.applied.Load() > 0 })
+	tn.shutDown(laptop)
+	tn.shutDown(sb)
+	tn.shutDown(hub)
+}
+
+func TestAFreshMachineTakesTheLibraryAndNeverOverwritesIt(t *testing.T) {
+	tn := newTestTailnet(t)
+	hub := tn.add("hub", config.HoldHub)
+	sb := tn.add("sb", config.HoldStandby)
+	putLibraryFile(t, hub, library.Instructions, "yours")
+	tn.start(hub)
+	tn.waitFor("the hub leads", tn.leaderIs("hub"))
+	tn.start(sb)
+
+	tn.waitForLibraryFile(sb, library.Instructions, "yours")
+	time.Sleep(200 * time.Millisecond)
+	if data, _ := os.ReadFile(hub.lib.Path(library.Instructions)); string(data) != "yours" {
+		t.Fatalf("the hub's library changed to %q", data)
+	}
+	tn.shutDown(sb)
+	tn.shutDown(hub)
 }

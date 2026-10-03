@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,9 +11,13 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/darkyeg/spinup/internal/agentconfig"
 	"github.com/darkyeg/spinup/internal/config"
+	"github.com/darkyeg/spinup/internal/library"
 	"github.com/darkyeg/spinup/internal/proxy"
 	"github.com/darkyeg/spinup/internal/service"
+	"github.com/darkyeg/spinup/internal/skills"
+	"github.com/darkyeg/spinup/internal/source"
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
@@ -38,7 +43,9 @@ func (c daemonCmd) Run() error {
 	if err != nil {
 		return fmt.Errorf("%w (run spinup setup again)", err)
 	}
+	restoreHome(cfg.Home)
 	o := service.Options{Config: cfg, Secrets: secrets, Tailnet: tailnet.CLI{Bin: cfg.Tailscale}, Log: logger, Version: version}
+	shareLibrary(&o, cfg, logger)
 	if cfg.Hold.CanHold() {
 		if err := withProxy(&o, cfg, logger); err != nil {
 			return err
@@ -51,6 +58,30 @@ func (c daemonCmd) Run() error {
 		return err
 	}
 	return nil
+}
+
+// shareLibrary shares your library with your other machines and installs one that arrives from them.
+func shareLibrary(o *service.Options, cfg config.Config, logger *log.Logger) {
+	repo := source.Find(cfg.Repo)
+	lib := library.Here()
+	if cfg.Library != "" {
+		lib = library.At(cfg.Library)
+	}
+	o.Library = lib
+	o.ApplyLibrary = func(ctx context.Context) error {
+		_, skillsErr := skills.New(repo, lib, logger.Printf).Offline().Sync(ctx)
+		_, agentsErr := agentconfig.Install(agentconfig.Sources{Spinup: repo, Yours: lib}, agentconfig.HostHomes())
+		return errors.Join(skillsErr, agentsErr)
+	}
+}
+
+// restoreHome gives a service started at boot without a home folder the one setup saw.
+func restoreHome(home string) {
+	if _, err := os.UserHomeDir(); err == nil || home == "" {
+		return
+	}
+	os.Setenv("HOME", home)
+	os.Setenv("USERPROFILE", home)
 }
 
 func withProxy(o *service.Options, cfg config.Config, logger *log.Logger) error {

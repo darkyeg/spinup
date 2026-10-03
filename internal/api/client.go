@@ -17,6 +17,8 @@ type Client struct {
 	HTTP *http.Client
 	// Key is the management password; public calls leave it empty.
 	Key string
+	// APIKey is for library calls, which every machine may make.
+	APIKey string
 	// From and Hold describe the calling machine; the command line leaves them empty.
 	From string
 	Hold config.Hold
@@ -55,6 +57,7 @@ func (c Client) do(ctx context.Context, method, url string, in, out any) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	setIf(req.Header, KeyHeader, c.Key)
+	setIf(req.Header, APIKeyHeader, c.APIKey)
 	setIf(req.Header, ForwardedHeader, c.From)
 	setIf(req.Header, HoldHeader, string(c.Hold))
 	resp, err := c.HTTP.Do(req)
@@ -68,8 +71,11 @@ func (c Client) do(ctx context.Context, method, url string, in, out any) error {
 	if out == nil {
 		return nil
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return json.NewDecoder(io.LimitReader(resp.Body, answerLimit)).Decode(out)
 }
+
+// answerLimit bounds an answer: the largest is a library, base64-encoded.
+const answerLimit = 128 << 20
 
 // Refused is a definite answer from the other side: the request arrived and was turned down.
 // Any other error leaves open whether it took effect.

@@ -41,6 +41,10 @@ type Config struct {
 	Tailscale string `json:"tailscale,omitempty"`
 	// Repo is the spinup checkout setup ran from; empty means the data built into the binary.
 	Repo string `json:"repo,omitempty"`
+	// Library is your library, which the service shares with your other machines.
+	Library string `json:"library,omitempty"`
+	// Home is your home folder, for a service started at boot without one.
+	Home string `json:"home,omitempty"`
 }
 
 // FailoverAfter is how long Tailscale must report the leader offline before another machine leads.

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/skills"
 	"github.com/darkyeg/spinup/internal/source"
 )
@@ -57,6 +58,7 @@ type skillsAddCmd struct {
 }
 
 func (c skillsAddCmd) Run() error {
+	catchUpLibrary()
 	mode := skills.Auto
 	if c.Manual {
 		mode = skills.Manual
@@ -69,6 +71,7 @@ type skillsRemoveCmd struct {
 }
 
 func (c skillsRemoveCmd) Run() error {
+	catchUpLibrary()
 	return reportSynced(skillManager(repoData()).Remove(context.Background(), c.Names))
 }
 
@@ -77,6 +80,7 @@ type skillsManualCmd struct {
 }
 
 func (c skillsManualCmd) Run() error {
+	catchUpLibrary()
 	return skillManager(repoData()).SetMode(c.Names, skills.Manual)
 }
 
@@ -85,11 +89,29 @@ type skillsAutoCmd struct {
 }
 
 func (c skillsAutoCmd) Run() error {
+	catchUpLibrary()
 	return skillManager(repoData()).SetMode(c.Names, skills.Auto)
 }
 
 func syncSkills(ctx context.Context, repo source.Source) error {
+	catchUpLibrary()
 	return reportSynced(skillManager(repo).Sync(ctx))
+}
+
+// catchUpLibrary brings in a newer library from your other machines first, so a change here builds on it.
+// Without a running service there is nothing to catch up with, and the library here is used as it is.
+func catchUpLibrary() {
+	cfg, err := config.Load()
+	if err != nil {
+		return
+	}
+	s, err := config.LoadSecrets(cfg)
+	if err != nil {
+		return
+	}
+	l := localService(cfg, "")
+	l.client.APIKey = s.APIKey
+	_ = l.catchUpLibrary()
 }
 
 func reportSynced(s skills.Synced, err error) error {

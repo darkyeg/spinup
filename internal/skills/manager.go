@@ -71,6 +71,7 @@ type Synced struct {
 	Failed []string
 }
 
+// installer fetches skills from a GitHub repo into the skill store; nil means this machine doesn't fetch.
 type installer func(ctx context.Context, source string, agents, names []string) (output string, err error)
 
 type Manager struct {
@@ -89,6 +90,13 @@ func New(src source.Source, lib library.Library, logf func(format string, a ...a
 	return Manager{src: src, lib: lib, paths: hostPaths(), install: npxInstall, logf: logf}
 }
 
+// Offline never fetches: it installs only the copies your library already has. The service uses it,
+// since it may run without Node.js or a network.
+func (m Manager) Offline() Manager {
+	m.install = nil
+	return m
+}
+
 // Sync installs every listed skill, links your own, parks the unlisted and applies the modes.
 // When an install fails it still returns what was done, with an error naming the failed sources.
 func (m Manager) Sync(ctx context.Context) (Synced, error) {
@@ -97,6 +105,9 @@ func (m Manager) Sync(ctx context.Context) (Synced, error) {
 		return Synced{}, err
 	}
 	failed := m.installSources(ctx, list)
+	if err := m.forgetUnlisted(list.listed()); err != nil {
+		return Synced{}, err
+	}
 	own, err := m.publishOwn(ctx)
 	if err != nil {
 		return Synced{}, err
@@ -119,16 +130,107 @@ func (m Manager) Sync(ctx context.Context) (Synced, error) {
 	return synced, nil
 }
 
+// installSources installs each listed skill from your library's copy, fetching (and keeping a copy of)
+// only the ones the library doesn't have yet.
 func (m Manager) installSources(ctx context.Context, list manifest) (failed []string) {
 	for _, entry := range list.sources {
-		m.logf("Skills from %s: %s", entry.Source, strings.Join(entry.Names, ", "))
-		output, err := m.install(ctx, entry.Source, list.agents, entry.Names)
-		if err != nil {
+		if err := m.fetchMissing(ctx, entry, list.agents); err != nil {
 			failed = append(failed, entry.Source)
-			m.logf("%s", tail(output+err.Error(), failureTailSize))
+			m.logf("%s", err)
+			continue
+		}
+		if err := m.installFetched(ctx, entry.Names); err != nil {
+			failed = append(failed, entry.Source)
+			m.logf("%s: %v", entry.Source, err)
 		}
 	}
 	return failed
+}
+
+func (m Manager) fetchMissing(ctx context.Context, entry sourceEntry, agents []string) error {
+	var missing []string
+	for _, name := range entry.Names {
+		if !fileExists(filepath.Join(m.fetchedCopy(name), skillFile)) {
+			missing = append(missing, name)
+		}
+	}
+	switch {
+	case len(missing) == 0:
+		return nil
+	case m.install == nil:
+		return fmt.Errorf("%s: %s not in your library yet; run `spinup skills` on a machine with Node.js",
+			entry.Source, strings.Join(missing, ", "))
+	}
+	m.logf("Fetching from %s: %s", entry.Source, strings.Join(missing, ", "))
+	if output, err := m.install(ctx, entry.Source, agents, missing); err != nil {
+		return fmt.Errorf("%s", tail(output+err.Error(), failureTailSize))
+	}
+	for _, name := range missing {
+		if err := m.keepCopy(name); err != nil {
+			return fmt.Errorf("%s: keeping a copy of %s: %w", entry.Source, name, err)
+		}
+	}
+	return nil
+}
+
+// keepCopy saves a freshly fetched skill into your library, for your other machines; a copy is whole or absent.
+func (m Manager) keepCopy(name string) error {
+	installed := filepath.Join(m.paths.store, name)
+	if !fileExists(filepath.Join(installed, skillFile)) {
+		return fmt.Errorf("it isn't in %s after fetching", m.paths.store)
+	}
+	dest := m.fetchedCopy(name)
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	staging, err := os.MkdirTemp(filepath.Dir(dest), "."+name+"-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	if err := os.CopyFS(filepath.Join(staging, name), os.DirFS(installed)); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(dest); err != nil {
+		return err
+	}
+	return atomicfile.Rename(filepath.Join(staging, name), dest)
+}
+
+// installFetched installs the library's copy of each skill this machine doesn't have installed.
+func (m Manager) installFetched(ctx context.Context, names []string) error {
+	for _, name := range names {
+		if fileExists(filepath.Join(m.paths.store, name, skillFile)) {
+			continue
+		}
+		if err := m.paths.publish(ctx, ownSkill{name, os.DirFS(m.fetchedCopy(name))}); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// forgetUnlisted drops the library's copies of skills no longer on the list.
+func (m Manager) forgetUnlisted(listed []string) error {
+	entries, err := os.ReadDir(m.lib.Path(library.Fetched))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !slices.Contains(listed, entry.Name()) {
+			if err := os.RemoveAll(m.fetchedCopy(entry.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (m Manager) fetchedCopy(name string) string {
+	return m.lib.Path(library.Fetched + "/" + name)
 }
 
 func (m Manager) publishOwn(ctx context.Context) ([]ownSkill, error) {
@@ -336,6 +438,11 @@ func ownNames(own []ownSkill) []string {
 		names[i] = skill.name
 	}
 	return names
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 func dirExists(path string) bool {

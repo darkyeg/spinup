@@ -15,6 +15,7 @@ import (
 
 	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/leadership"
+	"github.com/darkyeg/spinup/internal/library"
 	"github.com/darkyeg/spinup/internal/tailnet"
 )
 
@@ -44,6 +45,12 @@ type Options struct {
 	Tick        time.Duration
 	// HandBackIdle replaces leadership.HandBackIdle.
 	HandBackIdle time.Duration
+
+	// Library is shared with the other machines when set; ApplyLibrary installs it after another machine's arrives.
+	Library      library.Library
+	ApplyLibrary func(context.Context) error
+	// LibraryEvery is how often the libraries are compared.
+	LibraryEvery time.Duration
 }
 
 // Machine is this machine running spinup: it wires the units that each own one part of its state.
@@ -65,11 +72,18 @@ type Machine struct {
 	notes    outlook
 	repairs  repairs
 	activity activity
+	library  *libraryShare // nil when the library isn't shared
 }
 
 func New(o Options) *Machine {
 	if o.Tick == 0 {
 		o.Tick = 3 * time.Second
+	}
+	if o.LibraryEvery == 0 {
+		o.LibraryEvery = 15 * time.Second
+	}
+	if o.ApplyLibrary == nil {
+		o.ApplyLibrary = func(context.Context) error { return nil }
 	}
 	if o.StatePath == "" {
 		o.StatePath = statePath()
@@ -109,6 +123,7 @@ func (m *Machine) Run(ctx context.Context) error {
 	}
 	ctx, m.stopRun = context.WithCancel(ctx)
 	defer m.stopRun()
+	m.openLibrary()
 
 	front, err := net.Listen("tcp", m.o.FrontListen)
 	if err != nil {
@@ -122,6 +137,9 @@ func (m *Machine) Run(ctx context.Context) error {
 	if m.cfg.Hold.CanHold() {
 		go m.servePeers(ctx)
 		go m.watchSleep(ctx)
+	}
+	if m.library != nil {
+		go m.shareLibrary(ctx)
 	}
 	ticker := time.NewTicker(m.o.Tick)
 	defer ticker.Stop()

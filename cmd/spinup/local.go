@@ -17,6 +17,8 @@ const (
 	moveWithin = 5 * time.Minute
 	// stopWithin covers the same for a stopping service, which waits less for running requests.
 	stopWithin = 2 * time.Minute
+	// libraryCallWithin covers catching up: waiting for the other machines, then taking a library from one.
+	libraryCallWithin = 3 * time.Minute
 )
 
 // local is this machine's spinup service, reached on localhost.
@@ -56,6 +58,11 @@ func (l local) leader() (api.Leader, error) {
 func (l local) report() (api.Report, error) {
 	var out api.Report
 	return out, l.call(10*time.Second, http.MethodGet, api.PathState, nil, &out)
+}
+
+// catchUpLibrary has the service take a newer library from your other machines before this one changes it.
+func (l local) catchUpLibrary() error {
+	return l.call(libraryCallWithin, http.MethodPost, api.PathLibrarySync, struct{}{}, nil)
 }
 
 func (l local) handOff(to string) error {

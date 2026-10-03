@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"slices"
 	"strings"
 )
@@ -56,6 +57,9 @@ func parseDocument(data []byte) (document, error) {
 		if err := json.Unmarshal(raw, &doc.manual); err != nil {
 			return document{}, fmt.Errorf("manual: %w", err)
 		}
+		if err := checkNames(doc.manual); err != nil {
+			return document{}, fmt.Errorf("manual: %w", err)
+		}
 	}
 	if raw, ok := obj.get(keySources); ok {
 		if doc.sources, err = parseSources(raw); err != nil {
@@ -81,9 +85,22 @@ func parseSources(raw json.RawMessage) ([]sourceEntry, error) {
 		if err := json.Unmarshal(obj.values[source], &names); err != nil {
 			return nil, fmt.Errorf("%s: %w", source, err)
 		}
+		if err := checkNames(names); err != nil {
+			return nil, fmt.Errorf("%s: %w", source, err)
+		}
 		entries = append(entries, sourceEntry{source, names})
 	}
 	return entries, nil
+}
+
+// checkNames refuses skill names that aren't a plain folder name: a name becomes a path on every machine.
+func checkNames(names []string) error {
+	for _, name := range names {
+		if !fs.ValidPath(name) || strings.ContainsAny(name, `/\:`) || strings.HasPrefix(name, ".") {
+			return fmt.Errorf("%q isn't a skill name", name)
+		}
+	}
+	return nil
 }
 
 func (d document) render() []byte {

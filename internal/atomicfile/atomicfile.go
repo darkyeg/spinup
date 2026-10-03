@@ -38,11 +38,11 @@ func Write(path string, data []byte, perm os.FileMode) error {
 	if err := os.Chmod(tmp.Name(), perm); err != nil {
 		return err
 	}
-	return renameRetrying(tmp.Name(), path)
+	return Rename(tmp.Name(), path)
 }
 
-// renameRetrying waits out a reader that briefly holds the target open, which makes Windows refuse the rename.
-func renameRetrying(from, to string) error {
+// Rename waits out a reader that briefly holds the target open (or a file inside a folder being moved), which makes Windows refuse the rename.
+func Rename(from, to string) error {
 	err := os.Rename(from, to)
 	for wait := 10 * time.Millisecond; err != nil && errors.Is(err, fs.ErrPermission) && wait <= 640*time.Millisecond; wait *= 2 {
 		time.Sleep(wait)

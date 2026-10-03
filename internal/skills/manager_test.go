@@ -306,3 +306,58 @@ func TestPublishParksARealDirectoryInsteadOfDeletingIt(t *testing.T) {
 		t.Fatal("own skill is not linked")
 	}
 }
+
+func TestSyncFetchesOnceAndKeepsACopyInYourLibrary(t *testing.T) {
+	f := newFixture(t, sampleManifest)
+	write(t, f.lib.Path("fetched/dropped/SKILL.md"), "no longer listed")
+
+	if _, err := f.manager.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.manager.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(f.calls, []string{"o/a"}) {
+		t.Fatalf("fetched %v, want o/a once", f.calls)
+	}
+	for _, name := range []string{"keep", "hand"} {
+		if !exists(f.lib.Path("fetched/" + name + "/SKILL.md")) {
+			t.Errorf("no copy of %s in the library", name)
+		}
+	}
+	if exists(f.lib.Path("fetched/dropped")) {
+		t.Error("the copy of a skill no longer listed stayed")
+	}
+}
+
+func TestOfflineInstallsTheLibrarysCopiesWithoutFetching(t *testing.T) {
+	f := newFixture(t, sampleManifest)
+	write(t, f.lib.Path("fetched/keep/SKILL.md"), "---\ndescription: from another machine\n---\n")
+	write(t, f.lib.Path("fetched/hand/SKILL.md"), "---\ndescription: from another machine\n---\n")
+
+	if _, err := f.manager.Offline().Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(f.calls) > 0 {
+		t.Fatalf("fetched %v while offline", f.calls)
+	}
+	if !exists(filepath.Join(f.paths.store, "keep", "SKILL.md")) || !exists(filepath.Join(f.paths.claudeSkills(), "keep", "SKILL.md")) {
+		t.Fatal("the library's copy wasn't installed for both agents")
+	}
+}
+
+func TestOfflineSaysWhatTheLibraryLacksAndParksNothing(t *testing.T) {
+	f := newFixture(t, sampleManifest)
+	write(t, filepath.Join(f.paths.store, "stray", "SKILL.md"), "x")
+
+	_, err := f.manager.Offline().Sync(context.Background())
+
+	if err == nil || len(f.calls) > 0 {
+		t.Fatalf("err = %v, fetched %v", err, f.calls)
+	}
+	if !exists(filepath.Join(f.paths.store, "stray")) {
+		t.Fatal("parked a skill while the list couldn't be installed")
+	}
+}

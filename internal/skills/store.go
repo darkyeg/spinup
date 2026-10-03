@@ -61,7 +61,13 @@ func findOwn(lib fs.FS) ([]ownSkill, error) {
 	return found, nil
 }
 
+// publish copies a skill into the store and links it into Claude Code's skills.
 func (p paths) publish(ctx context.Context, skill ownSkill) error {
+	for _, dir := range []string{p.store, p.claudeSkills()} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
 	dest := filepath.Join(p.store, skill.name)
 	if err := removeAny(dest); err != nil {
 		return err

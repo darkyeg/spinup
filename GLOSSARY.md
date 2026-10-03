@@ -7,7 +7,7 @@ The words spinup uses, in the code, the commands and the docs. Use these and not
 - **Machine**: a computer you code on that runs spinup. Its **name** is its Tailscale name, which other machines type to reach it.
 - **Tailnet**: your private Tailscale network. It is the only list of machines; the repo keeps none.
 - **Device**: anything on the tailnet, with or without spinup (a phone, a server).
-- **Library**: the folder with what is yours, `~/.spinup`: your skills list, own skills and instructions.
+- **Library**: the folder with what is yours, `~/.spinup`: your skills list, own skills and instructions. The spinup service keeps it the same on all your machines; the newest change wins.
 - **Checkout**: a clone of the spinup repo, for working on spinup itself; spinup then uses its data in place of the built-in copy.
 
 ## Accounts

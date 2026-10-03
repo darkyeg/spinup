@@ -4,12 +4,15 @@ package api
 import (
 	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/leadership"
+	"github.com/darkyeg/spinup/internal/library"
 	"github.com/darkyeg/spinup/internal/logins"
 )
 
 const (
 	// KeyHeader carries the management password.
 	KeyHeader = "X-Spinup-Key"
+	// APIKeyHeader carries the API key, which every machine knows: enough to share the library.
+	APIKeyHeader = "X-Spinup-API-Key"
 	// ForwardedHeader names the sending machine; a request carrying it is never forwarded again.
 	ForwardedHeader = "X-Spinup-Forwarded"
 	// HoldHeader lets machines learn about each other the moment one calls another.
@@ -28,6 +31,10 @@ const (
 	PathTakeover = "/spinup/takeover" // the user makes this machine lead; localhost only
 	PathStop     = "/spinup/stop"     // the user stops this service gracefully; localhost only
 	PathRestart  = "/spinup/restart"  // restart the proxy after an update, if this machine holds the accounts; localhost only
+
+	PathLibrary      = "/spinup/library"       // GET this machine's library, POST a newer one or fetched copies; with the API key
+	PathLibraryState = "/spinup/library/state" // when this machine's library last changed; with the API key
+	PathLibrarySync  = "/spinup/library/sync"  // catch up with the other machines now, before an edit; localhost only
 )
 
 // Leader is public: it names who holds the accounts, with proofs of the secrets its machine knows.
@@ -49,6 +56,18 @@ type Logins struct {
 	// Complete: Files is everything the sender has, so a login missing from it was removed there.
 	Complete bool          `json:"complete"`
 	Files    []logins.File `json:"files"`
+}
+
+// Library is a machine's library: when it last changed, and its files.
+type Library struct {
+	Stamp library.Stamp  `json:"stamp"`
+	Files []library.File `json:"files"`
+}
+
+// LibraryState says when a machine's library last changed and which fetched copies it holds.
+type LibraryState struct {
+	Stamp   library.Stamp `json:"stamp"`
+	Fetched []string      `json:"fetched,omitempty"`
 }
 
 type Handoff struct {

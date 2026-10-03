@@ -10,6 +10,7 @@ import (
 
 	"github.com/darkyeg/spinup/internal/api"
 	"github.com/darkyeg/spinup/internal/config"
+	"github.com/darkyeg/spinup/internal/host"
 	"github.com/darkyeg/spinup/internal/proxy"
 	"github.com/darkyeg/spinup/internal/release"
 	"github.com/darkyeg/spinup/internal/source"
@@ -82,6 +83,7 @@ func serviceConfig(req serviceRequest) (config.Config, error) {
 	if dir, err := req.repo.Checkout(); err == nil {
 		cfg.Repo = dir
 	}
+	cfg.Library, cfg.Home = yourLibrary(req.repo).Dir(), host.Home()
 	return cfg, nil
 }
 

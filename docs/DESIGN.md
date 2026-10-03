@@ -61,6 +61,7 @@ spinup is built around a **single writer**: at any moment, exactly one machine m
 - **Least privilege.** spinup runs as your user, never as SYSTEM or root. On Windows, starting at boot (before anyone logs in) and the Tailscale-only firewall rule need one admin prompt at setup time, and never again.
 - **At rest.** The login folder is readable by your user only. Use disk encryption (BitLocker, FileVault, LUKS) on every machine that can hold the accounts.
 - **Never in git.** Logins and keys never touch any repository.
+- **Your library stays among your machines.** It is shared only between machines that know the API key, over the tailnet: machines that only use the accounts share it with the leader, and the hub and standbys with each other ([LIBRARY.md](LIBRARY.md)).
 - **Verified updates.** Releases are built by GitHub Actions; spinup verifies each download against the release checksums before it replaces itself.
 
 ## Updates
