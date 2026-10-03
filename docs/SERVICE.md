@@ -78,7 +78,7 @@ spinup --version
 
 **...a hand-off gets no answer.** The old leader stays stopped and presumes the target holds the accounts. If the target shows it never took them, the old leader leads again; if the target is gone, the usual failover applies.
 
-**...the leader loses power or its network.** The others wait until **Tailscale's control server** has reported it offline for 3 minutes (`failover_after_seconds`). If they just can't reach it while Tailscale still sees it online, they wait instead, because it may still be using the accounts. Meanwhile, a leader that notices it has lost Tailscale stops its own proxy 10 seconds later, long before anyone may take over. Then the best candidate (the hub first, then by name) takes over with the newest logins it can collect. Requests sent in the meantime wait for the new leader instead of failing.
+**...the leader loses power or its network.** The others wait until **Tailscale's control server** reports it offline and 3 minutes have elapsed since its last sighting (`failover_after_seconds`). If they just can't reach it while Tailscale still sees it online, they wait instead, because it may still be using the accounts. Meanwhile, a leader that notices it has lost Tailscale stops its own proxy 10 seconds later, long before anyone may take over. Then the best candidate (the hub first, then by name) takes over with the newest logins it can collect. New requests can wait for the new leader within the routing timeout; clients may time out sooner, and responses already streaming through the failed leader may be interrupted.
 
 **...the hub comes back.** It doesn't start its proxy. It syncs from the current leader, and the leader hands the accounts back (`auto_failback`, on by default) once no request has run through its proxy for 30 seconds. While requests run, `spinup status` shows them and says the hand-back is waiting.
 
@@ -99,7 +99,7 @@ spinup --version
 | `hold` | `never` | `never`, `standby` or `hub` |
 | `port` | `8317` | spinup's router on localhost; also on the Tailscale address of hubs and standbys |
 | `proxy_port` | `8327` | CLIProxyAPI's own port, `127.0.0.1` only |
-| `failover_after_seconds` | `180` | How long Tailscale must report the leader offline before another machine takes over; at least 150, because a machine can take up to two minutes to notice it lost Tailscale |
+| `failover_after_seconds` | `180` | Minimum time since Tailscale's last sighting of an offline leader before takeover; at least 150, because a machine can take up to two minutes to notice it lost Tailscale |
 | `auto_failback` | `true` | Hand the accounts back to the hub when it returns |
 | `proxy_dir`, `auth_dir` | `%LOCALAPPDATA%\CLIProxyAPI` on Windows, `~/Library/Application Support/CLIProxyAPI` on macOS, `~/.local/share/cliproxyapi` elsewhere; `~/.cli-proxy-api` | CLIProxyAPI and the logins |
 

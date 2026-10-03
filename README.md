@@ -2,14 +2,14 @@
 
 # spinup
 
-**Every computer you code with AI on: set up with one command, kept the same, sharing your AI accounts without ever logging them out.**
+**Every computer you code with AI on: set up with one command, kept consistent, sharing your AI accounts with hub/standby failover.**
 
-You have a desktop, a laptop, maybe a Mac. You use Claude Code and Codex. On each machine you install the same tools, copy the same skills and settings, and sign in to the same accounts, then watch them drift apart. And if two machines refresh the same login, the provider logs you out everywhere.
+You have a desktop, a laptop, maybe a Mac. You use Claude Code and Codex. On each machine you install the same tools, copy the same skills and settings, and sign in to the same accounts, then watch them drift apart. Competing refreshes of the same login can also leave you repairing account access.
 
 spinup fixes that:
 
 - **One command per machine.** `spinup setup <name>` installs your dev tools, joins your private network ([Tailscale](https://tailscale.com)), installs your skills and agent settings, and ends with a health check.
-- **Your accounts on every machine.** One machine holds your Claude and Codex logins in [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI); every computer running spinup uses them at `http://localhost:8317`. If the holder goes off, a standby takes over, and gives the accounts back when it returns. Two machines never refresh the same login, so you are never logged out.
+- **Your accounts on every machine.** One machine holds your Claude and Codex logins in [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI); every computer running spinup uses them at `http://localhost:8317`. If the holder goes off, a standby takes over, and gives the accounts back when it returns. spinup keeps one holder active to avoid competing login refreshes. An abrupt failure just after a refresh can still require logging that account in again; see [the service limits](docs/SERVICE.md).
 - **The same agents everywhere.** Your skills and instructions sync through your library. Claude Code and Codex settings come from spinup's defaults, merged into each computer's own config. [Choose where a setting belongs](docs/AGENT-CONFIG.md).
 - **It tells you what's wrong.** `spinup doctor` checks everything and prints the command that fixes each problem.
 
@@ -21,13 +21,15 @@ On a Mac the service runs as a LaunchAgent, so a hub or standby Mac holds the ac
 
 **1. Install spinup** on each machine:
 
-The install scripts download binaries from the [latest GitHub release](https://github.com/darkyeg/spinup/releases/latest); publishing source alone does not make them usable. Until the first binary release, build a checkout with Go:
+The install scripts download binaries from the [latest GitHub release](https://github.com/darkyeg/spinup/releases/latest); publishing source alone does not make them usable. Until the first binary release, get a checkout and build it with Go:
 
 ```sh
+git clone https://github.com/darkyeg/spinup.git
+cd spinup
 go install ./cmd/spinup
 ```
 
-Put Go's bin directory on PATH. Build the branch containing the feature you want; an unreleased feature is unavailable through `spinup update`. Once a release is published, use the installers:
+Put Go's bin directory on PATH. For changes on another branch, check out that branch before running `go install`; an unreleased change is unavailable through `spinup update`. Once a release is published, use the installers:
 
 ```sh
 # macOS, Linux
@@ -90,8 +92,8 @@ A phone without spinup uses an online hub or standby's Tailscale name and the AP
 
 - **Names, not IPs.** Tailscale gives each machine a fixed private address and the name you chose. At home traffic goes straight over your router; away, directly over the internet, or through an encrypted relay when it must.
 - **No machine list to keep.** Tailscale is the list; spinup reads it.
-- **One holder at a time.** A standby takes over only when Tailscale itself reports the holder offline for three minutes, never just because it can't reach it. Planned moves wait for running requests up to the drain limit; new requests wait for the next holder up to their routing timeout. In plain words: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md); the full safety design: [docs/DESIGN.md](docs/DESIGN.md). Day-to-day use: [docs/SERVICE.md](docs/SERVICE.md).
-- **Change it once, every machine has it.** Your skills list, own skills and instructions live in your library (`~/.spinup`), which spinup keeps the same on all your machines within seconds: no repo, no GitHub account, nothing to pull.
+- **One holder at a time.** A standby takes over only when Tailscale reports the holder offline and at least three minutes have elapsed since its last sighting, never just because it can't reach it. Planned moves wait for running requests up to the drain limit; new requests wait for the next holder up to their routing timeout. In plain words: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md); the full safety design: [docs/DESIGN.md](docs/DESIGN.md). Day-to-day use: [docs/SERVICE.md](docs/SERVICE.md).
+- **Change it once, your online machines receive it.** Your skills list, own skills and instructions live in your library (`~/.spinup`). With a hub or standby online, spinup shares changes within seconds; disconnected machines catch up when they reconnect. No private repo or GitHub account is needed for your library.
 
 ## Make it yours
 
@@ -103,6 +105,8 @@ A phone without spinup uses an online hub or standby's Tailscale name and the AP
 | Your instructions | `~/.spinup/AGENTS.md`, then `spinup agents` |
 
 All of it lives in your library: [docs/LIBRARY.md](docs/LIBRARY.md). Why spinup's defaults are what they are: [docs/WHY.md](docs/WHY.md). Using the accounts from T3 Code: [docs/T3-PROXY.md](docs/T3-PROXY.md).
+
+Before relying on a new build across machines, follow the [hub/standby validation guide](docs/VALIDATION.md).
 
 To change spinup's own defaults (suggested skills, stack rules in `skills/per-repo.json`, `agents/`, `tools.json`), fork the repo: spinup uses the checkout it runs in (or `SPINUP_REPO`).
 
