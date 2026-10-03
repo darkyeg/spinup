@@ -27,7 +27,7 @@ type cli struct {
 	Status   statusCmd   `cmd:"" group:"accounts" help:"Who holds the accounts, every login and every machine."`
 	Handoff  handoffCmd  `cmd:"" group:"accounts" help:"Move the accounts to another machine, safely."`
 	Takeover takeoverCmd `cmd:"" group:"accounts" help:"Hold the accounts here because their holder is lost for good."`
-	Keys     keysCmd     `cmd:"" group:"accounts" help:"Print the API key and dashboard password."`
+	Keys     keysCmd     `cmd:"" group:"accounts" help:"Print this machine's API key; holders also print the dashboard password."`
 
 	Skills skillsCmd `cmd:"" group:"agents" help:"Install your skills for Claude Code and Codex; list, add, remove."`
 	Agents agentsCmd `cmd:"" group:"agents" help:"Install the shared instructions, subagents and settings."`

@@ -72,7 +72,7 @@ func TestTakeReplacesYoursAndAddsFetchedCopies(t *testing.T) {
 		{Path: SkillsList, Data: []byte("new list")},
 		{Path: "skills/new/SKILL.md", Data: []byte("new")},
 		{Path: "fetched/both/SKILL.md", Data: []byte("new copy")},
-	})
+	}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestTakeReplacesYoursAndAddsFetchedCopies(t *testing.T) {
 func TestTakeRefusesPathsOutsideTheLibrary(t *testing.T) {
 	lib := At(t.TempDir())
 	for _, p := range []string{"../escape", "/abs", `skills\..\..\x`, "C:/x", "other.txt", "skills/x/.hidden", ".", "skills/.git/config", "skills/con/SKILL.md", "skills/x /SKILL.md"} {
-		if err := lib.Take([]File{{Path: p, Data: []byte("x")}}); err == nil {
+		if err := lib.Take([]File{{Path: p, Data: []byte("x")}}, time.Now()); err == nil {
 			t.Errorf("took %q", p)
 		}
 	}
@@ -128,6 +128,31 @@ func TestTrackerDatesChangesAndKeepsATakenDate(t *testing.T) {
 	}
 	if got, _ := reloaded.Observe("b", first, first.Add(2*time.Hour)); got != taken {
 		t.Fatalf("after a restart the taken library is dated %+v, want %+v", got, taken)
+	}
+}
+
+func TestTrackerRemembersDeletionOfTheLastFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "stamp.json")
+	tr, err := NewTracker(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	before, err := tr.Observe("instructions", first, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Stamp{ChangedAt: first.Add(time.Minute)}
+	got, err := tr.Observe("", time.Time{}, want.ChangedAt)
+	if err != nil || got != want || Compare(got, before) != Give {
+		t.Fatalf("deletion = %+v, %v; want %+v newer than %+v", got, err, want, before)
+	}
+	reloaded, err := NewTracker(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reloaded.Observe("", time.Time{}, first.Add(time.Hour)); err != nil || got != want {
+		t.Fatalf("deletion after restart = %+v, %v; want %+v", got, err, want)
 	}
 }
 

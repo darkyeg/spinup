@@ -140,8 +140,9 @@ func (l Library) AddFetched(files []File) (added []string, err error) {
 }
 
 // Take makes this library hold files from another machine: what you made is replaced as a whole, and each
-// fetched skill that came along replaces this machine's copy of it.
-func (l Library) Take(files []File) error {
+// fetched skill that came along replaces this machine's copy of it. File times keep the source date
+// so losing the tracker cannot make a received copy look like a new local edit.
+func (l Library) Take(files []File, changedAt time.Time) error {
 	incoming := map[string]bool{}
 	fetchedSkills := map[string]bool{}
 	for _, f := range files {
@@ -168,6 +169,9 @@ func (l Library) Take(files []File) error {
 	}
 	for _, f := range files {
 		if err := atomicfile.Write(l.Path(f.Path), f.Data, 0o644); err != nil {
+			return err
+		}
+		if err := os.Chtimes(l.Path(f.Path), changedAt, changedAt); err != nil {
 			return err
 		}
 	}

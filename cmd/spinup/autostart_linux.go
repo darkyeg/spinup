@@ -94,6 +94,6 @@ func systemctlSays(question, unit string) bool {
 	return exec.Command("systemctl", question, "--quiet", unit).Run() == nil
 }
 
-func autostartRegistered() bool {
+func autostartRegistered(config.Hold) bool {
 	return exec.Command("systemctl", "--user", "is-enabled", "--quiet", unitName).Run() == nil
 }

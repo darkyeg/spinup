@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/darkyeg/spinup/internal/atomicfile"
 	"github.com/darkyeg/spinup/internal/host"
 	"github.com/darkyeg/spinup/internal/library"
 	"github.com/darkyeg/spinup/internal/shell"
@@ -165,7 +166,7 @@ func (p paths) park(names []string) error {
 		if err := os.RemoveAll(target); err != nil {
 			return err
 		}
-		if err := os.Rename(filepath.Join(p.store, name), target); err != nil {
+		if err := atomicfile.Rename(filepath.Join(p.store, name), target); err != nil {
 			return err
 		}
 	}
@@ -180,7 +181,7 @@ func (p paths) parkAside(dir, name string) error {
 	for n := 1; taken(target); n++ {
 		target = filepath.Join(p.parked, fmt.Sprintf("%s-%d", name, n))
 	}
-	return os.Rename(dir, target)
+	return atomicfile.Rename(dir, target)
 }
 
 func taken(path string) bool {

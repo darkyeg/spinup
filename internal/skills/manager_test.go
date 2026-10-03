@@ -186,6 +186,35 @@ func TestRemoveWithoutMatchLeavesTheFileAlone(t *testing.T) {
 	}
 }
 
+func TestInvalidSkillEditsLeaveTheLibraryUsable(t *testing.T) {
+	for _, name := range []string{"CON", "../outside"} {
+		for _, existing := range []bool{false, true} {
+			for _, command := range []string{"add", "manual"} {
+				f := newFixture(t, sampleManifest)
+				if existing {
+					write(t, f.lib.Path(library.SkillsList), sampleManifest)
+				}
+				var err error
+				if command == "add" {
+					_, err = f.manager.Add(context.Background(), "owner/repo", []string{name}, Auto)
+				} else {
+					err = f.manager.SetMode([]string{name}, Manual)
+				}
+				if err == nil {
+					t.Fatalf("%s accepted %q", command, name)
+				}
+				data, readErr := os.ReadFile(f.lib.Path(library.SkillsList))
+				if existing && (readErr != nil || string(data) != sampleManifest) || !existing && !os.IsNotExist(readErr) {
+					t.Fatalf("%s with %q changed the library: %s, %v", command, name, data, readErr)
+				}
+				if len(f.calls) != 0 {
+					t.Fatal("an invalid edit started installing skills")
+				}
+			}
+		}
+	}
+}
+
 func TestTheFirstEditStartsYourListFromSpinupsAndLeavesSpinupsAlone(t *testing.T) {
 	suggested := `{"_comment":"spinup's","agents":["codex"],"manual":["hand"],"sources":{"o/a":["keep","hand"]}}`
 	f := newFixture(t, suggested)

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -22,6 +23,96 @@ func TestActivityCountsRunningRequestsAndTimesTheQuiet(t *testing.T) {
 	got := a.snapshot(time.Now().Add(time.Minute))
 	if got.InFlight != 0 || got.IdleFor < time.Minute {
 		t.Fatalf("after both ended: %+v, want 0 running and at least a minute idle", got)
+	}
+}
+
+func TestPauseWaitsForIdleWhileStillServingRequests(t *testing.T) {
+	var a activity
+	end, _ := a.begin()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	paused := make(chan error, 1)
+	go func() { paused <- a.pause(ctx) }()
+	second, ok := a.begin()
+	if !ok {
+		t.Fatal("waiting for idle turned away a request")
+	}
+	second()
+	select {
+	case err := <-paused:
+		t.Fatalf("pause ended while a request still runs: %v", err)
+	default:
+	}
+	end()
+	if err := <-paused; err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := a.begin(); ok {
+		t.Fatal("an idle, paused proxy admitted a request")
+	}
+	if !a.resume() {
+		t.Fatal("an unfenced proxy could not resume")
+	}
+	end, ok = a.begin()
+	if !ok {
+		t.Fatal("a resumed proxy turned away a request")
+	}
+	end()
+}
+
+func TestCanceledPauseLeavesRequestsServing(t *testing.T) {
+	for _, busy := range []bool{false, true} {
+		var a activity
+		if busy {
+			end, _ := a.begin()
+			defer end()
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := a.pause(ctx); !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled pause: %v", err)
+		}
+		end, ok := a.begin()
+		if !ok {
+			t.Fatal("a canceled pause closed admission")
+		}
+		end()
+	}
+}
+
+func TestHurryAbortsPauseAndMaintenanceCannotClearIt(t *testing.T) {
+	var a activity
+	end, _ := a.begin()
+	defer end()
+	stopping := a.stopRequested()
+	paused := make(chan error, 1)
+	go func() { paused <- a.pause(context.Background()) }()
+	a.hurry()
+	a.hurry()
+	if _, ok := a.begin(); ok {
+		t.Fatal("an urgently fenced proxy admitted a new request")
+	}
+	select {
+	case err := <-paused:
+		if !errors.Is(err, errMustStop) {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("fencing did not wake the pause")
+	}
+	select {
+	case <-stopping:
+	default:
+		t.Fatal("fencing did not cancel maintenance startup")
+	}
+	if a.resume() || !a.mustStop() {
+		t.Fatal("maintenance cleared the fence")
+	}
+	a.open()
+	select {
+	case <-a.stopRequested():
+		t.Fatal("a fresh ownership claim inherited the previous stop signal")
+	default:
 	}
 }
 

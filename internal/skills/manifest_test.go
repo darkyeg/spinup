@@ -1,9 +1,33 @@
 package skills
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
+
+func TestManifestRejectsSkillNamesThatCannotTravelToWindows(t *testing.T) {
+	for _, name := range []string{"CON", "nul", "COM1", "LPT9", "CON.txt", "COM¹", "CONIN$", "skill.", "skill ", "skill?", "skill|name", "skill\x00", "skill\x1f"} {
+		for _, field := range []string{"sources", "manual"} {
+			var input map[string]any
+			if field == "sources" {
+				input = map[string]any{"sources": map[string]any{"owner/repo": []string{name}}}
+			} else {
+				input = map[string]any{"manual": []string{name}}
+			}
+			data, _ := json.Marshal(input)
+			if _, err := parseDocument(data); err == nil {
+				t.Errorf("%s accepted nonportable name %q", field, name)
+			}
+		}
+	}
+	for _, name := range []string{"skill-name", "COM10", "conversation", "a.b", "a skill"} {
+		data, _ := json.Marshal(map[string]any{"sources": map[string]any{"owner/repo": []string{name}}})
+		if _, err := parseDocument(data); err != nil {
+			t.Errorf("rejected portable name %q: %v", name, err)
+		}
+	}
+}
 
 func mustParse(t *testing.T, text string) document {
 	t.Helper()

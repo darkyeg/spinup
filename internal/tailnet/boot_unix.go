@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/darkyeg/spinup/internal/shell"
 )
@@ -21,6 +22,11 @@ func startAtBoot(ctx context.Context) error {
 			return nil
 		}
 		return shell.AsRoot(ctx, "brew", "services", "start", "tailscale")
+	}
+	if state, err := shell.Output(ctx, "systemctl", "is-enabled", "tailscaled"); err == nil && strings.TrimSpace(state) == "enabled" {
+		if _, err := shell.Output(ctx, "systemctl", "is-active", "--quiet", "tailscaled"); err == nil {
+			return nil
+		}
 	}
 	return shell.AsRoot(ctx, "systemctl", "enable", "--now", "tailscaled")
 }

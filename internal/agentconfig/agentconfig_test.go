@@ -1,9 +1,11 @@
 package agentconfig
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/darkyeg/spinup/internal/atomicfile"
@@ -106,6 +108,24 @@ func TestSetKey(t *testing.T) {
 				t.Fatalf("got %q want %q", got, c.want)
 			}
 		})
+	}
+}
+
+func TestCodexSettingsMergeIntoExistingTableAndQuotedKeys(t *testing.T) {
+	for _, header := range []string{"[agents] # local roles", "[ agents ]", `["agents"]`, "['agents']"} {
+		for _, key := range []string{"default_subagent_model", `"default_subagent_model"`, "'default_subagent_model'"} {
+			t.Run(header+"/"+key, func(t *testing.T) {
+				current := header + "\n" + key + " = \"old\"\nenabled = false\n\n[model_providers.local]\nbase_url = \"http://localhost:9000/v1\"\n"
+				got, err := applyCodexSettings(current, "[agents]\ndefault_subagent_model = \"small\"\n")
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := header + "\ndefault_subagent_model = \"small\"\nenabled = false\n\n[model_providers.local]\nbase_url = \"http://localhost:9000/v1\"\n"
+				if got != want {
+					t.Fatalf("settings were duplicated or unrelated settings changed:\n%s", got)
+				}
+			})
+		}
 	}
 }
 
@@ -244,6 +264,49 @@ func TestRepoDataPlansOnAnEmptyMachine(t *testing.T) {
 	files, err := Plan(Sources{source.At(root), library.At(t.TempDir())}, Homes{Claude: filepath.Join(home, "c"), Codex: filepath.Join(home, "x")})
 	if err != nil || len(files) < 5 {
 		t.Fatalf("plan: %d files, %v", len(files), err)
+	}
+}
+
+func TestBundledDefaultsKeepProviderAuthenticationAndProfiles(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	homes := Homes{Claude: filepath.Join(home, "claude"), Codex: filepath.Join(home, "codex")}
+	src := Sources{Spinup: source.At(root), Yours: library.At(t.TempDir())}
+	claudePath := filepath.Join(homes.Claude, "settings.json")
+	put(t, claudePath, `{"env":{"ANTHROPIC_BASE_URL":"http://localhost:9000","ANTHROPIC_AUTH_TOKEN":"fixture-key"},"hooks":{"Stop":[]},"outputStyle":"Verbose"}`)
+	provider := "[model_providers.local]\nbase_url = \"http://localhost:9000/v1\"\nenv_key = \"LOCAL_API_KEY\"\n"
+	profile := "[profiles.work]\nmodel_reasoning_effort = \"high\"\n"
+	codexPath := filepath.Join(homes.Codex, "config.toml")
+	put(t, codexPath, "model = \"local-model\"\nmodel_provider = \"local\"\n\n"+provider+"\n"+profile)
+	authPath := filepath.Join(homes.Codex, "auth.json")
+	put(t, authPath, `{"OPENAI_API_KEY":"fixture-key"}`)
+	if _, err := Install(src, homes); err != nil {
+		t.Fatal(err)
+	}
+	var claude struct {
+		Env   map[string]string
+		Hooks map[string]json.RawMessage
+	}
+	if err := json.Unmarshal([]byte(get(t, claudePath)), &claude); err != nil {
+		t.Fatal(err)
+	}
+	if claude.Env["ANTHROPIC_BASE_URL"] != "http://localhost:9000" || claude.Env["ANTHROPIC_AUTH_TOKEN"] != "fixture-key" || string(claude.Hooks["Stop"]) != "[]" {
+		t.Fatal("Claude provider settings or hooks changed")
+	}
+	codex := get(t, codexPath)
+	for _, kept := range []string{"model = \"local-model\"", "model_provider = \"local\"", provider, profile} {
+		if !strings.Contains(codex, kept) {
+			t.Fatalf("Codex setting changed: %s", kept)
+		}
+	}
+	if get(t, authPath) != `{"OPENAI_API_KEY":"fixture-key"}` {
+		t.Fatal("Codex authentication changed")
+	}
+	if files, err := Install(src, homes); err != nil || len(files) != 0 {
+		t.Fatalf("reinstall changed settings: %v, %v", files, err)
 	}
 }
 

@@ -95,6 +95,14 @@ func elevatedPowerShell(script, request string) *exec.Cmd {
 		"Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList "+strings.Join(quoted, ","))
 }
 
-func autostartRegistered() bool {
-	return exec.Command("schtasks", "/Query", "/TN", "spinup").Run() == nil
+func autostartRegistered(hold config.Hold) bool {
+	if exec.Command("schtasks", "/Query", "/TN", "spinup").Run() != nil {
+		return false
+	}
+	if !hold.CanHold() {
+		return true
+	}
+	check := `$rule = Get-NetFirewallRule -DisplayName 'spinup (Tailscale only)' -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' }
+if (-not $rule) { exit 1 }`
+	return exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", check).Run() == nil
 }

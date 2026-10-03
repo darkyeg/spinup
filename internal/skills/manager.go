@@ -327,6 +327,9 @@ func (m Manager) describe(name, from string, manual []string) Skill {
 
 // Add lists names from source, as manual skills when mode is Manual, then runs Sync.
 func (m Manager) Add(ctx context.Context, from string, names []string, mode Mode) (Synced, error) {
+	if err := checkNames(names); err != nil {
+		return Synced{}, err
+	}
 	err := m.edit(func(d *document) error {
 		d.add(from, names, mode)
 		return nil
@@ -353,6 +356,9 @@ func (m Manager) Remove(ctx context.Context, names []string) (Synced, error) {
 
 // SetMode switches names between auto and manual and re-applies the modes without installing.
 func (m Manager) SetMode(names []string, mode Mode) error {
+	if err := checkNames(names); err != nil {
+		return err
+	}
 	err := m.edit(func(d *document) error {
 		d.setMode(names, mode)
 		return nil

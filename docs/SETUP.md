@@ -18,6 +18,8 @@ Done when: you know the name and the hold. If the user didn't say and `spinup st
 
 ## 2. Install spinup
 
+The installers require a published binary release. For an unreleased build, follow the [README's source-build instructions](../README.md#quick-start) from the checkout of the intended branch or commit. `go install github.com/darkyeg/spinup/cmd/spinup@latest` resolves Go's latest module version; it does not install unmerged branch changes.
+
 - Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/darkyeg/spinup/main/scripts/install.sh | sh`
 - Windows: `irm https://raw.githubusercontent.com/darkyeg/spinup/main/scripts/install.ps1 | iex`
 - Or, with Go: `go install github.com/darkyeg/spinup/cmd/spinup@latest`
@@ -42,8 +44,10 @@ Done when: setup finishes and `spinup status` shows who holds the accounts; on a
 
 ## 4. Log in
 
-Open a new terminal, run `gh auth login`, and log in to `claude` and `codex` once.
-Done when: `gh auth status` succeeds.
+On the hub or current holder, open `http://localhost:8317/management.html` and add the needed shared accounts through **OAuth Login**. Signing in to the ordinary Claude Code or Codex CLI does not populate CLIProxyAPI's account store.
+
+Open a new terminal and run `gh auth login` for GitHub access. If the user also wants native Claude Code or Codex providers, sign in to those separately in their normal homes; keep proxy instances separate as described in [AGENT-CONFIG.md](AGENT-CONFIG.md).
+Done when: `gh auth status` succeeds and a small request through each configured proxy-backed provider succeeds. `ccp --print "Reply with exactly SPINUP_OK"` checks the shared Claude route when a Claude account was added.
 
 ## 5. Repos
 
@@ -60,3 +64,5 @@ Done when: the client's T3 lists the hub as Connected over a `*.ts.net` URL (not
 
 Run `spinup doctor` and fix every `[XX]` it prints (each comes with its fix).
 Done when: doctor ends with "All good."
+
+For a hub and standby, also follow [the cross-machine validation guide](VALIDATION.md). A local health check alone does not exercise handoff or failure takeover.

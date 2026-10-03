@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"slices"
 	"strings"
 )
@@ -91,16 +90,6 @@ func parseSources(raw json.RawMessage) ([]sourceEntry, error) {
 		entries = append(entries, sourceEntry{source, names})
 	}
 	return entries, nil
-}
-
-// checkNames refuses skill names that aren't a plain folder name: a name becomes a path on every machine.
-func checkNames(names []string) error {
-	for _, name := range names {
-		if !fs.ValidPath(name) || strings.ContainsAny(name, `/\:`) || strings.HasPrefix(name, ".") {
-			return fmt.Errorf("%q isn't a skill name", name)
-		}
-	}
-	return nil
 }
 
 func (d document) render() []byte {

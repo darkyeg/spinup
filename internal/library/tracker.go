@@ -49,13 +49,13 @@ func NewTracker(path string) (*Tracker, error) {
 	return t, nil
 }
 
-// Observe dates the library holding hash, last modified at modified: an empty library is never dated (nor
-// remembered), and a new hash is dated now, or by modified when the tracker has no memory yet.
+// Observe dates a new hash now, or by modified without memory. An untouched empty library has no date;
+// deleting the last file of a remembered library keeps a date so the deletion can be shared.
 func (t *Tracker) Observe(hash string, modified, now time.Time) (Stamp, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	switch {
-	case t.mem.Taking, hash == "":
+	case t.mem.Taking, hash == "" && !t.remembers:
 		return Stamp{}, nil
 	case hash != t.mem.Last.Hash && !t.remembers:
 		return t.date(hash, earlier(modified, now))

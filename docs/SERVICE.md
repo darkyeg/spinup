@@ -27,7 +27,7 @@ Every machine with the service answers on `http://localhost:8317`:
 
 So `ccp`, T3 Code's proxy provider, and your scripts use `http://localhost:8317` and never need to change when the leader moves. The dashboard is at `http://localhost:8317/management.html`.
 
-Hub and standby machines also answer on their Tailscale address (`http://<machine-name>:8317`), so devices without the service (a phone) keep working. That port is open to your tailnet only.
+Hubs and standbys also answer on their Tailscale addresses (`http://<machine-name>:8317`), so devices without the service can use an online hub or standby as their router. A phone's `localhost` is the phone itself; use that computer's Tailscale name and your API key. The router follows holder changes automatically, but if that router computer goes offline, choose another online hub or standby's address. That port is open to your tailnet only; machines that only use the accounts listen on localhost.
 
 ## Set up
 
@@ -62,7 +62,7 @@ Re-running `spinup setup` repairs the machine and leaves a running service alone
 spinup status              # who holds the accounts, how fresh this machine's copy is, each login, every machine
 spinup handoff <machine>   # move the accounts to another hub/standby, safely
 spinup takeover            # hold the accounts here (only when their holder is lost for good; refused on the machine that holds them; valid for a minute)
-spinup keys                # the API key and dashboard password (hub or standby)
+spinup keys                # API key on every configured computer; dashboard password on hub/standby
 spinup update              # spinup, CLIProxyAPI, skills and Tailscale; the accounts stay where they are
 spinup uninstall           # stop the service here, handing the accounts to a synced machine first; logins and keys stay
 spinup --version
@@ -78,7 +78,7 @@ spinup --version
 
 **...a hand-off gets no answer.** The old leader stays stopped and presumes the target holds the accounts. If the target shows it never took them, the old leader leads again; if the target is gone, the usual failover applies.
 
-**...the leader loses power or its network.** The others wait until **Tailscale's control server** has reported it offline for 3 minutes (`failover_after_seconds`). If they just can't reach it while Tailscale still sees it online, they wait instead, because it may still be using the accounts. Meanwhile, a leader that notices it has lost Tailscale stops its own proxy 10 seconds later, long before anyone may take over. Then the best candidate (the hub first, then by name) takes over with the newest logins it can collect. Requests sent in the meantime wait for the new leader instead of failing.
+**...the leader loses power or its network.** The others wait until **Tailscale's control server** reports it offline and 3 minutes have elapsed since its last sighting (`failover_after_seconds`). If they just can't reach it while Tailscale still sees it online, they wait instead, because it may still be using the accounts. Meanwhile, a leader that notices it has lost Tailscale stops its own proxy 10 seconds later, long before anyone may take over. Then the best candidate (the hub first, then by name) takes over with the newest logins it can collect. New requests can wait for the new leader within the routing timeout; clients may time out sooner, and responses already streaming through the failed leader may be interrupted.
 
 **...the hub comes back.** It doesn't start its proxy. It syncs from the current leader, and the leader hands the accounts back (`auto_failback`, on by default) once no request has run through its proxy for 30 seconds. While requests run, `spinup status` shows them and says the hand-back is waiting.
 
@@ -86,7 +86,7 @@ spinup --version
 
 **...a computer sleeps.** On wake, a leader stops using the accounts until it has checked that nobody took over meanwhile.
 
-**...a token is refused anyway.** Every 30 seconds the leader looks for refused logins and takes a newer copy from another machine if one has it. If none does, the log says which account to log in again.
+**...a token is refused anyway.** Every 30 seconds the leader looks for refused logins and takes a newer copy from another machine if one has it. It waits for active requests to finish, stops the proxy, checks its final refreshes, imports newer copies, and resumes. New requests wait during the restart. If requests stay busy, it retries later. If no machine has a newer copy, the log says which account to log in again.
 
 **The one gap:** if the leader loses power within seconds of refreshing a login, before pushing it, the others have the previous token for that account, and you log that one account in again. Planned shutdowns and handoffs have no gap.
 
@@ -97,13 +97,15 @@ spinup --version
 | Field | Default | Meaning |
 |---|---|---|
 | `hold` | `never` | `never`, `standby` or `hub` |
-| `port` | `8317` | `localhost` on every machine and, on hub/standby, the Tailscale port |
+| `port` | `8317` | spinup's router on localhost; also on the Tailscale address of hubs and standbys |
 | `proxy_port` | `8327` | CLIProxyAPI's own port, `127.0.0.1` only |
-| `failover_after_seconds` | `180` | How long Tailscale must report the leader offline before another machine takes over; at least 150, because a machine can take up to two minutes to notice it lost Tailscale |
+| `failover_after_seconds` | `180` | Minimum time since Tailscale's last sighting of an offline leader before takeover; at least 150, because a machine can take up to two minutes to notice it lost Tailscale |
 | `auto_failback` | `true` | Hand the accounts back to the hub when it returns |
 | `proxy_dir`, `auth_dir` | `%LOCALAPPDATA%\CLIProxyAPI` on Windows, `~/Library/Application Support/CLIProxyAPI` on macOS, `~/.local/share/cliproxyapi` elsewhere; `~/.cli-proxy-api` | CLIProxyAPI and the logins |
 
 Restart the service after editing (re-run `spinup setup <name>`).
+
+The default port can stay the same on every computer: each has its own localhost. If you change `port`, use the same value on all spinup machines, re-run setup on each to refresh the service, `ccp` and Windows firewall rule, and update your T3 Code and phone endpoints. Keep `proxy_port` different from `port`.
 
 ## Security
 
@@ -121,6 +123,7 @@ Restart the service after editing (re-run `spinup setup <name>`).
 - **The leader died for good** (stolen, disk gone): run `spinup takeover` on a standby. Don't do it while the old leader could come back with newer logins.
 - **You uninstalled the leader with no synced standby:** the others see it online without spinup and wait. Run `spinup takeover` on a standby.
 - **The log says "a CLIProxyAPI that spinup didn't start answers on port 8327":** an old CLIProxyAPI is still running. Stop it (or re-run `spinup setup <name>`, which stops it), and the service starts its own.
+- **A Windows hub or standby answers locally but cannot be reached over Tailscale:** re-run `spinup setup <name>` on it. Setup also checks for the enabled Tailscale firewall rule and repairs a missing rule. Windows may ask for admin approval.
 
 ## Updates
 

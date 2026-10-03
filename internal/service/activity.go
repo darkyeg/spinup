@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sync"
 	"time"
@@ -10,6 +11,8 @@ import (
 )
 
 const neverBusy = time.Duration(math.MaxInt64)
+
+var errMustStop = errors.New("this machine must stop using the accounts")
 
 // activity counts the requests this machine serves through its own proxy and when the last one ended.
 type activity struct {
@@ -21,7 +24,8 @@ type activity struct {
 	// closed turns new requests away once a drain ended, until the proxy serves again.
 	closed bool
 	// urgent ends drains at once, until the proxy serves again.
-	urgent bool
+	urgent   bool
+	stopping chan struct{}
 }
 
 // begin counts a request, unless a drain closed the proxy to new ones; end ends it and is safe to call more than once.
@@ -41,13 +45,42 @@ func (a *activity) open() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.closed, a.urgent = false, false
+	a.stopping = nil
+}
+
+func (a *activity) resume() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.urgent {
+		return false
+	}
+	a.closed = false
+	return true
+}
+
+func (a *activity) stopRequested() <-chan struct{} {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.stopping == nil {
+		a.stopping = make(chan struct{})
+		if a.urgent {
+			close(a.stopping)
+		}
+	}
+	return a.stopping
 }
 
 // hurry ends any drain now: the machine must stop using the accounts at once.
 func (a *activity) hurry() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.urgent = true
+	a.closed = true
+	if !a.urgent {
+		a.urgent = true
+		if a.stopping != nil {
+			close(a.stopping)
+		}
+	}
 	a.wake()
 }
 
@@ -88,6 +121,34 @@ func (a *activity) inFlight() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.running
+}
+
+// pause closes admission only after requests finish naturally; cancellation leaves them serving.
+func (a *activity) pause(ctx context.Context) error {
+	for {
+		a.mu.Lock()
+		switch {
+		case a.urgent:
+			a.mu.Unlock()
+			return errMustStop
+		case ctx.Err() != nil:
+			a.mu.Unlock()
+			return ctx.Err()
+		case a.running == 0:
+			a.closed = true
+			a.mu.Unlock()
+			return nil
+		}
+		if a.ended == nil {
+			a.ended = make(chan struct{})
+		}
+		ended := a.ended
+		a.mu.Unlock()
+		select {
+		case <-ended:
+		case <-ctx.Done():
+		}
+	}
 }
 
 // drain waits until no request runs, for at most limit and never after hurry, then turns new requests away
