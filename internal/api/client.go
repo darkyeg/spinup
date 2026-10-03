@@ -60,7 +60,9 @@ func (c Client) do(ctx context.Context, method, url string, in, out any) error {
 	setIf(req.Header, APIKeyHeader, c.APIKey)
 	setIf(req.Header, ForwardedHeader, c.From)
 	setIf(req.Header, HoldHeader, string(c.Hold))
-	resp, err := c.HTTP.Do(req)
+	httpClient := *c.HTTP
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}

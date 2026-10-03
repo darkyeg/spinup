@@ -78,7 +78,7 @@ func (s *libraryShare) take(incoming api.Library, now time.Time) error {
 	if err := s.tracker.Taking(incoming.Stamp); err != nil {
 		return err
 	}
-	if err := s.lib.Take(incoming.Files); err != nil {
+	if err := s.lib.Take(incoming.Files, incoming.Stamp.ChangedAt); err != nil {
 		return err
 	}
 	if err := s.tracker.Took(incoming.Stamp); err != nil {

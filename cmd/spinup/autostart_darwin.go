@@ -67,6 +67,6 @@ func guiDomain() string { return fmt.Sprintf("gui/%d", os.Getuid()) }
 
 func agentTarget() string { return guiDomain() + "/" + agentLabel }
 
-func autostartRegistered() bool {
+func autostartRegistered(config.Hold) bool {
 	return exec.Command("launchctl", "print", agentTarget()).Run() == nil
 }

@@ -72,7 +72,7 @@ func TestTakeReplacesYoursAndAddsFetchedCopies(t *testing.T) {
 		{Path: SkillsList, Data: []byte("new list")},
 		{Path: "skills/new/SKILL.md", Data: []byte("new")},
 		{Path: "fetched/both/SKILL.md", Data: []byte("new copy")},
-	})
+	}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestTakeReplacesYoursAndAddsFetchedCopies(t *testing.T) {
 func TestTakeRefusesPathsOutsideTheLibrary(t *testing.T) {
 	lib := At(t.TempDir())
 	for _, p := range []string{"../escape", "/abs", `skills\..\..\x`, "C:/x", "other.txt", "skills/x/.hidden", ".", "skills/.git/config", "skills/con/SKILL.md", "skills/x /SKILL.md"} {
-		if err := lib.Take([]File{{Path: p, Data: []byte("x")}}); err == nil {
+		if err := lib.Take([]File{{Path: p, Data: []byte("x")}}, time.Now()); err == nil {
 			t.Errorf("took %q", p)
 		}
 	}

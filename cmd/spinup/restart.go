@@ -41,7 +41,7 @@ func currentFacts(cfg config.Config, settingsChanged bool) serviceFacts {
 }
 
 func bootStateOf(cfg config.Config) bootState {
-	if !autostartRegistered() {
+	if !autostartRegistered(cfg.Hold) {
 		return notRegistered
 	}
 	if _, err := localService(cfg, "").leader(); err != nil {

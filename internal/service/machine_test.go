@@ -328,9 +328,15 @@ func TestFailoverLifecycle(t *testing.T) {
 	tn.waitFor("the standby gets the login", func() bool { return refreshToken(sb, "acct.json") == "t1" })
 
 	for _, tm := range []*testMachine{hub, sb, laptop} {
-		tn.waitFor(tm.name+"'s localhost reaches the hub", func() bool {
-			return strings.Contains(get(tm.front, "/v1/models"), "on hub")
-		})
+		addresses := []string{tm.front}
+		if tm.hold.CanHold() {
+			addresses = append(addresses, tm.peerAPI)
+		}
+		for _, addr := range addresses {
+			tn.waitFor(tm.name+"'s router reaches the hub", func() bool {
+				return strings.Contains(get(addr, "/v1/models"), "on hub")
+			})
+		}
 	}
 
 	writeLogin(t, hub, "acct.json", "t2")
@@ -350,6 +356,9 @@ func TestFailoverLifecycle(t *testing.T) {
 	}
 	tn.waitFor("the laptop follows the new leader", func() bool {
 		return strings.Contains(get(laptop.front, "/v1/models"), "on sb")
+	})
+	tn.waitFor("the standby's tailnet router follows the new leader", func() bool {
+		return strings.Contains(get(sb.peerAPI, "/v1/models"), "on sb")
 	})
 	writeLogin(t, sb, "acct.json", "t3")
 

@@ -111,10 +111,8 @@ func (m *Machine) acceptLogins(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, loginsLimit, &incoming) {
 		return
 	}
-	if m.fromLeader(incoming) {
-		m.mergeFromLeader(incoming)
-	} else if _, err := logins.Merge(m.cfg.AuthDir, m.cfg.RemovedDir(), incoming.Files, logins.Some); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if _, err := m.mergeLogins(r.Context(), incoming); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	writeJSON(w, okBody)

@@ -25,13 +25,18 @@ const (
 
 // lead takes newer logins from the other machines first, then starts if nobody else holds the accounts.
 func (m *Machine) lead(ctx context.Context, epoch int64) error {
+	files := m.collectLogins(ctx)
 	m.transition.Lock()
 	defer m.transition.Unlock()
-	if written := m.takeNewerLogins(ctx); len(written) > 0 {
-		m.log.Printf("took newer logins: %v", written)
-	}
 	if err := m.stillUnheld(ctx, epoch); err != nil {
 		return err
+	}
+	merged, err := m.mergeStopped(files, logins.Some)
+	if err != nil {
+		return err
+	}
+	if len(merged.Written) > 0 {
+		m.log.Printf("took newer logins: %v", merged.Written)
 	}
 	return m.startLeading(ctx, epoch)
 }
@@ -82,6 +87,9 @@ func (m *Machine) startProxy(ctx context.Context, epoch int64, previous claim) e
 }
 
 func (m *Machine) launchProxy(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if m.o.PrepareProxy != nil {
 		if err := m.o.PrepareProxy(); err != nil {
 			return err
@@ -89,6 +97,9 @@ func (m *Machine) launchProxy(ctx context.Context) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, proxyStartTimeout)
 	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := m.o.Proxy.Start(ctx); err != nil {
 		m.o.Proxy.Stop(nil)
 		return err
@@ -232,7 +243,7 @@ func (m *Machine) receive(accounts api.Logins) error {
 	}
 	previous := m.ledger.beginLeading(accounts.Epoch, m.tail.selfName())
 	m.save()
-	if _, err := logins.Merge(m.cfg.AuthDir, m.cfg.RemovedDir(), accounts.Files, logins.Everything); err != nil {
+	if _, err := m.mergeStopped(accounts.Files, logins.Everything); err != nil {
 		m.ledger.abandonLeading(previous)
 		m.save()
 		return err

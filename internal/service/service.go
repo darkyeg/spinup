@@ -1,5 +1,5 @@
-// Package service runs spinup on one machine: the localhost front every machine has and, on
-// machines that can hold the accounts, leadership, login sync and the peer API.
+// Package service runs spinup's localhost front and library sharing on every machine,
+// with leadership, login sync and the peer API on machines that can hold the accounts.
 package service
 
 import (
@@ -55,14 +55,15 @@ type Options struct {
 
 // Machine is this machine running spinup: it wires the units that each own one part of its state.
 type Machine struct {
-	o          Options
-	cfg        config.Config
-	log        *log.Logger
-	httpClient *http.Client
-	forwarder  *httputil.ReverseProxy
-	stopRun    context.CancelFunc
+	o           Options
+	cfg         config.Config
+	log         *log.Logger
+	httpClient  *http.Client
+	forwarder   *httputil.ReverseProxy
+	stopRun     context.CancelFunc
+	serviceDone <-chan struct{}
 
-	transition sync.Mutex // one leadership change at a time
+	transition sync.Mutex // serializes ownership changes and credential imports
 
 	ledger   *ledger
 	peers    *peerView
@@ -122,6 +123,7 @@ func (m *Machine) Run(ctx context.Context) error {
 		return fmt.Errorf("state: %w", err)
 	}
 	ctx, m.stopRun = context.WithCancel(ctx)
+	m.serviceDone = ctx.Done()
 	defer m.stopRun()
 	m.openLibrary()
 

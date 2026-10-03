@@ -11,11 +11,25 @@ const pullEvery = 30 * time.Second
 
 // replica tracks this machine's copy of the leader's logins, or, on the leader, what it pushed.
 type replica struct {
-	mu     sync.Mutex
-	epoch  int64
-	at     time.Time
-	pulled pace
-	pushed string
+	mu            sync.Mutex
+	epoch         int64
+	at            time.Time
+	pulled        pace
+	pushed        string
+	offeredLeader string
+	offeredEpoch  int64
+}
+
+func (r *replica) offered(leader string, epoch int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.offeredLeader, r.offeredEpoch = leader, epoch
+}
+
+func (r *replica) offeredTo(leader string, epoch int64) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.offeredLeader == leader && r.offeredEpoch == epoch
 }
 
 // pullDue reports whether a complete pull is due, and counts it as started.

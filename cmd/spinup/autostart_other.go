@@ -16,4 +16,4 @@ func registerAutostart(string, config.Config) error { return errNoAutostart }
 
 func unregisterAutostart(config.Config) error { return errNoAutostart }
 
-func autostartRegistered() bool { return false }
+func autostartRegistered(config.Hold) bool { return false }

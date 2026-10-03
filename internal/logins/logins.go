@@ -1,6 +1,6 @@
 // Package logins reads and merges CLIProxyAPI account logins, one JSON file per account.
 //
-// A copy replaces another only when it was refreshed later, so syncing can never undo a refresh.
+// A copy replaces another only when it was refreshed later.
 package logins
 
 import (
@@ -66,14 +66,43 @@ const (
 	Everything
 )
 
-// Merge writes each incoming login that is new here or refreshed later than ours. When incoming is
-// Everything, logins the sender no longer has move to removedDir.
-func Merge(dir, removedDir string, incoming []File, extent Extent) (Merged, error) {
-	var m Merged
+func validate(incoming []File) error {
 	for _, f := range incoming {
 		if !validName(f.Name) || !json.Valid(f.Data) {
-			return m, fmt.Errorf("refusing login %q: bad name or not JSON", f.Name)
+			return fmt.Errorf("refusing login %q: bad name or not JSON", f.Name)
 		}
+	}
+	return nil
+}
+
+// NeedsMerge checks whether any incoming login could be written. Merge must check again after
+// the caller stops the proxy: a refresh can finish after this check.
+func NeedsMerge(dir string, incoming []File) (bool, error) {
+	if err := validate(incoming); err != nil {
+		return false, err
+	}
+	needed := false
+	for _, f := range incoming {
+		current, err := os.ReadFile(filepath.Join(dir, f.Name))
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			needed = true
+		case err != nil:
+			return false, err
+		case replaces(f.Data, current):
+			needed = true
+		}
+	}
+	return needed, nil
+}
+
+// Merge writes each incoming login that is new here or refreshed later than ours. When incoming is
+// Everything, logins the sender no longer has move to removedDir. The caller must exclude other
+// writers, including the proxy, until Merge returns.
+func Merge(dir, removedDir string, incoming []File, extent Extent) (Merged, error) {
+	var m Merged
+	if err := validate(incoming); err != nil {
+		return m, err
 	}
 	local, err := Read(dir)
 	if err != nil {
@@ -90,9 +119,12 @@ func Merge(dir, removedDir string, incoming []File, extent Extent) (Merged, erro
 		if cur, ok := have[f.Name]; ok && !replaces(f.Data, cur) {
 			continue
 		}
-		// A running proxy may have refreshed the file since it was read: decide again on what's there now.
-		if now, err := os.ReadFile(path); err == nil && !replaces(f.Data, now) {
-			continue
+		if now, err := os.ReadFile(path); err == nil {
+			if !replaces(f.Data, now) {
+				continue
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return m, err
 		}
 		if err := atomicfile.Write(path, f.Data, 0o600); err != nil {
 			return m, err
