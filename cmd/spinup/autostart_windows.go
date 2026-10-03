@@ -102,7 +102,7 @@ func autostartRegistered(hold config.Hold) bool {
 	if !hold.CanHold() {
 		return true
 	}
-	check := `$rule = Get-NetFirewallRule -DisplayName 'spinup (Tailscale only)' -Enabled True -Direction Inbound -Action Allow -ErrorAction SilentlyContinue
+	check := `$rule = Get-NetFirewallRule -DisplayName 'spinup (Tailscale only)' -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' }
 if (-not $rule) { exit 1 }`
 	return exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", check).Run() == nil
 }
