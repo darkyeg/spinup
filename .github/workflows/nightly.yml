@@ -1,17 +1,19 @@
 name: nightly
 
-# Every night, when main moved since the last release, tag the next patch version and release it, so
-# `spinup update` brings merged fixes to every machine without anyone tagging by hand.
+# Every push to main tags the next patch version and releases it, so `spinup update` brings each
+# merged change to every machine without anyone tagging by hand.
 # Minor and major versions are still a tag you push yourself.
 on:
-  schedule:
-    - cron: "0 1 * * *"
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
-concurrency: nightly
+concurrency:
+  group: nightly
+  cancel-in-progress: false
 
 jobs:
   tag:
@@ -21,7 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: main
           fetch-depth: 0
       - id: next
         run: |
