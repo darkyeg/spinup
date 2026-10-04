@@ -66,6 +66,7 @@ spinup is built around a **single writer**: at any moment, exactly one machine m
 
 ## Updates
 
+- Every push to `main` makes GitHub Actions tag the next patch version and release it (`.github/workflows/nightly.yml`; run it by hand from the Actions tab). Minor and major versions are a tag you push.
 - `spinup update` checks GitHub Releases, verifies the new version, swaps the binary and restarts the accounts service on it.
 - CLIProxyAPI is updated the same way on a hub or standby (latest release, checksum-verified), and the proxy is restarted through the local service.
 - spinup's suggested skills, instructions and settings are built into the binary (or come from a checkout when you work on spinup); yours live in your library, `~/.spinup` ([LIBRARY.md](LIBRARY.md)).

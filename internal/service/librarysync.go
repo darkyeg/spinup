@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 
@@ -99,23 +100,40 @@ func (m *Machine) compareLibrary(ctx context.Context, base string) {
 	if err := m.libraryClient().Get(ctx, base+api.PathLibraryState, &there); err != nil {
 		return
 	}
+	seen := situation(here, there)
+	if m.library.exchanges.repeats(base, seen) {
+		return
+	}
+	m.library.exchanges.record(base, seen, m.exchangeLibrary(ctx, base, here, there))
+}
+
+// exchangeLibrary does what compareLibrary decided and reports whether a library went either way.
+func (m *Machine) exchangeLibrary(ctx context.Context, base string, here, there api.LibraryState) (sent bool) {
 	switch library.Compare(here.Stamp, there.Stamp) {
 	case library.Take:
-		if incoming, ok := m.fetchLibrary(ctx, base); ok {
+		incoming, ok := m.fetchLibrary(ctx, base)
+		if ok {
 			m.logTake(m.library.take(incoming, time.Now()), incoming.Stamp)
 		}
+		return ok
 	case library.Give:
-		m.giveLibrary(ctx, base)
-	default:
-		if lacking(here.Fetched, there.Fetched) {
-			if incoming, ok := m.fetchLibrary(ctx, base); ok {
-				m.logFetchedCopies(m.library.addFetched(incoming.Files))
-			}
-		}
-		if lacking(there.Fetched, here.Fetched) {
-			m.giveLibrary(ctx, base)
+		return m.giveLibrary(ctx, base)
+	}
+	if lacking(here.Fetched, there.Fetched) {
+		if incoming, ok := m.fetchLibrary(ctx, base); ok {
+			m.logFetchedCopies(m.library.addFetched(incoming.Files))
+			sent = true
 		}
 	}
+	if lacking(there.Fetched, here.Fetched) && m.giveLibrary(ctx, base) {
+		sent = true
+	}
+	return sent
+}
+
+// situation is what a comparison saw; meeting the same one right after a transfer means the transfer changed nothing.
+func situation(here, there api.LibraryState) string {
+	return fmt.Sprint(here.Stamp, there.Stamp, slices.Sorted(slices.Values(here.Fetched)), slices.Sorted(slices.Values(there.Fetched)))
 }
 
 // lacking reports whether have misses any of offered.
@@ -132,15 +150,19 @@ func (m *Machine) fetchLibrary(ctx context.Context, base string) (api.Library, b
 	return incoming, true
 }
 
-func (m *Machine) giveLibrary(ctx context.Context, base string) {
+// giveLibrary reports whether the library reached the partner, taken or refused.
+func (m *Machine) giveLibrary(ctx context.Context, base string) bool {
 	mine, err := m.library.snapshot(time.Now())
 	if err != nil {
 		m.log.Printf("library: %v", err)
-		return
+		return false
 	}
-	if err := m.libraryClient().Post(ctx, base+api.PathLibrary, mine, nil); err != nil && !api.WasRefused(err) {
+	err = m.libraryClient().Post(ctx, base+api.PathLibrary, mine, nil)
+	if err != nil && !api.WasRefused(err) {
 		m.log.Printf("library: couldn't share it with %s: %v", base, err)
+		return false
 	}
+	return true
 }
 
 func (m *Machine) logTake(err error, stamp library.Stamp) {

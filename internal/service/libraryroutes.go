@@ -3,6 +3,7 @@ package service
 import (
 	"crypto/subtle"
 	"errors"
+	"net"
 	"net/http"
 	"time"
 
@@ -35,13 +36,28 @@ func (m *Machine) serveLibraryState(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, state)
 }
 
-func (m *Machine) serveLibrary(w http.ResponseWriter, _ *http.Request) {
+// serveLibrary sends the whole library to a machine at most once per gap, so a partner stuck re-fetching
+// it can't flood the link; a partner fetches once a round, so a third of one still lets a catch-up through.
+func (m *Machine) serveLibrary(w http.ResponseWriter, r *http.Request) {
+	if !m.library.exchanges.mayServe(caller(r), time.Now(), m.o.LibraryEvery/3) {
+		writeError(w, http.StatusTooManyRequests, "this machine got the library moments ago; it gets it again next round")
+		return
+	}
 	l, err := m.library.snapshot(time.Now())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, l)
+}
+
+// caller is the machine that sent r: the name it gives, else its address.
+func caller(r *http.Request) string {
+	if name := r.Header.Get(api.ForwardedHeader); name != "" {
+		return name
+	}
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	return host
 }
 
 // acceptLibrary takes a newer library, or else keeps the fetched copies it brings that this machine lacks.
