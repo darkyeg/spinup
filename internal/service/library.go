@@ -21,6 +21,7 @@ type libraryShare struct {
 	mu      sync.Mutex
 	// installWanted asks the sharing loop to install the library; it holds at most one request.
 	installWanted chan struct{}
+	exchanges     exchanges
 }
 
 // openLibrary starts sharing when there is a library to share; a memory it can't read is only logged.
