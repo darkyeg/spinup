@@ -6,9 +6,12 @@ import (
 )
 
 // Newer reports whether version latest is later than current, comparing their numeric parts
-// (a leading v and any -prerelease or +build suffix are ignored); unreadable versions are never newer.
+// (a leading v and any -prerelease or +build suffix are ignored); a release replaces a commit build.
 func Newer(latest, current string) bool {
 	a, okA := numbers(latest)
+	if okA && commitBuild(current) {
+		return true
+	}
 	b, okB := numbers(current)
 	if !okA || !okB {
 		return false
@@ -22,6 +25,19 @@ func Newer(latest, current string) bool {
 		}
 	}
 	return false
+}
+
+func commitBuild(version string) bool {
+	core := strings.TrimSuffix(strings.TrimSpace(version), "-dirty")
+	if len(core) < 7 || len(core) > 40 {
+		return false
+	}
+	for _, c := range core {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func part(nums []int, i int) int {
