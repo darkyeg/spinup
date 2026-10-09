@@ -97,11 +97,19 @@ func (m *Machine) serveLeader(w http.ResponseWriter, r *http.Request) {
 
 func (m *Machine) serveState(w http.ResponseWriter, _ *http.Request) { writeJSON(w, m.Report()) }
 
-func (m *Machine) serveLogins(w http.ResponseWriter, _ *http.Request) {
+func (m *Machine) serveLogins(w http.ResponseWriter, r *http.Request) {
 	own, err := m.ownLogins(logins.Everything)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if tag := own.ETag(); tag != "" {
+		w.Header().Set("ETag", tag)
+		w.Header().Set("Cache-Control", "no-store")
+		if r.Header.Get("If-None-Match") == tag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
 	}
 	writeJSON(w, own)
 }

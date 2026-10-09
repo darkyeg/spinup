@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -50,7 +51,24 @@ func (m *Machine) follow(ctx context.Context, leader string, epoch int64, ts tai
 }
 
 func (m *Machine) pullFromLeader(ctx context.Context, leader string) {
-	incoming, err := m.pullLogins(ctx, leader)
+	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
+	defer cancel()
+	url, err := m.provenURL(leader, api.PathLogins)
+	if err != nil {
+		m.log.Printf("sync from %s: %v", leader, err)
+		return
+	}
+	client := m.client()
+	st := m.ledger.view(time.Now())
+	if m.replica.offeredTo(leader, st.Epoch) {
+		client.IfNoneMatch = m.loginTag(leader, st.Epoch)
+	}
+	var incoming api.Logins
+	err = client.Get(ctx, url, &incoming)
+	if errors.Is(err, api.ErrNotModified) {
+		m.confirmLoginCopy(leader, st.Epoch, client.IfNoneMatch)
+		return
+	}
 	if err != nil {
 		m.log.Printf("sync from %s: %v", leader, err)
 		return
@@ -58,6 +76,25 @@ func (m *Machine) pullFromLeader(ctx context.Context, leader string) {
 	if _, err := m.mergeLogins(ctx, incoming); err != nil {
 		m.log.Printf("sync from %s: %v", incoming.From, err)
 	}
+}
+
+func (m *Machine) loginTag(leader string, epoch int64) string {
+	files, err := logins.Read(m.cfg.AuthDir)
+	if err != nil {
+		return ""
+	}
+	return (api.Logins{From: leader, Epoch: epoch, Complete: true, Files: files}).ETag()
+}
+
+func (m *Machine) confirmLoginCopy(leader string, epoch int64, tag string) {
+	m.transition.Lock()
+	defer m.transition.Unlock()
+	st := m.ledger.view(time.Now())
+	if st.claiming() || st.Leader != leader || st.Epoch != epoch || m.loginTag(leader, epoch) != tag {
+		m.replica.pullSoon()
+		return
+	}
+	m.replica.merged(epoch, true)
 }
 
 // fromLeader reports whether incoming comes from the machine this one follows.
