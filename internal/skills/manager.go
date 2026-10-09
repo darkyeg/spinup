@@ -100,6 +100,11 @@ func (m Manager) Offline() Manager {
 // Sync installs every listed skill, links your own, parks the unlisted and applies the modes.
 // When an install fails it still returns what was done, with an error naming the failed sources.
 func (m Manager) Sync(ctx context.Context) (Synced, error) {
+	lock, err := m.paths.lockStore(ctx)
+	if err != nil {
+		return Synced{}, err
+	}
+	defer lock.Close()
 	list, err := m.manifest()
 	if err != nil {
 		return Synced{}, err

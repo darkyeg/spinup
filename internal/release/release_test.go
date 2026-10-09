@@ -1,6 +1,9 @@
 package release
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestChecksumFor(t *testing.T) {
 	sums := "abc  spinup_linux_amd64\ndef *CLIProxyAPI_1_windows_amd64.zip\n"
@@ -28,6 +31,11 @@ func TestNewer(t *testing.T) {
 		{"2.0.1", "2.0.0+build5", true},
 		{"latest", "1.0.0", false},
 		{"1.0.0", "dev", false},
+		{"v0.1.3", "6f0df62", true},
+		{"v0.1.3", "976172e-dirty", true},
+		{"v0.1.3", strings.Repeat("a", 40), true},
+		{"latest", "6f0df62", false},
+		{"v0.1.3", "unknown", false},
 		{"", "", false},
 	}
 	for _, c := range cases {
