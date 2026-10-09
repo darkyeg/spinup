@@ -14,7 +14,8 @@ import (
 
 // Client calls a spinup service: the local one for the command line, peers for the service.
 type Client struct {
-	HTTP *http.Client
+	HTTP        *http.Client
+	IfNoneMatch string
 	// Key is the management password; public calls leave it empty.
 	Key string
 	// APIKey is for library calls, which every machine may make.
@@ -23,6 +24,8 @@ type Client struct {
 	From string
 	Hold config.Hold
 }
+
+var ErrNotModified = errors.New("the peer's data is unchanged")
 
 func (c Client) Get(ctx context.Context, url string, out any) error {
 	return c.do(ctx, http.MethodGet, url, nil, out)
@@ -56,6 +59,9 @@ func (c Client) do(ctx context.Context, method, url string, in, out any) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if method == http.MethodGet {
+		setIf(req.Header, "If-None-Match", c.IfNoneMatch)
+	}
 	setIf(req.Header, KeyHeader, c.Key)
 	setIf(req.Header, APIKeyHeader, c.APIKey)
 	setIf(req.Header, ForwardedHeader, c.From)
@@ -67,6 +73,9 @@ func (c Client) do(ctx context.Context, method, url string, in, out any) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if method == http.MethodGet && c.IfNoneMatch != "" && resp.StatusCode == http.StatusNotModified {
+		return ErrNotModified
+	}
 	if resp.StatusCode/100 != 2 {
 		return failure(resp)
 	}
