@@ -1,9 +1,2 @@
-# Merged into ~/.codex/config.toml by `spinup agents`: these keys are set, everything else is kept.
-# See docs/WHY.md for why.
-model_reasoning_effort = "medium"
-plan_mode_reasoning_effort = "high"
-model_reasoning_summary = "concise"
-
-[agents]
-default_subagent_model = "gpt-6-luna"
-default_subagent_reasoning_effort = "low"
+# No shared overrides. Choose models, effort and limits in your local Codex config.
+# Forks may add shared keys here; unlisted settings remain unchanged.

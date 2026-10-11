@@ -262,7 +262,7 @@ func TestRepoDataPlansOnAnEmptyMachine(t *testing.T) {
 	}
 	home := t.TempDir()
 	files, err := Plan(Sources{source.At(root), library.At(t.TempDir())}, Homes{Claude: filepath.Join(home, "c"), Codex: filepath.Join(home, "x")})
-	if err != nil || len(files) < 5 {
+	if err != nil || len(files) != 2 {
 		t.Fatalf("plan: %d files, %v", len(files), err)
 	}
 }

@@ -85,6 +85,9 @@ func instructionsText(data, yours fs.FS) (string, error) {
 
 func subagentFiles(data fs.FS, claudeHome string) ([]File, error) {
 	entries, err := fs.ReadDir(data, subagentsDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

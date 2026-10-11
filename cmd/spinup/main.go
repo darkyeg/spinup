@@ -30,7 +30,7 @@ type cli struct {
 	Keys     keysCmd     `cmd:"" group:"accounts" help:"Print this machine's API key; holders also print the dashboard password."`
 
 	Skills skillsCmd `cmd:"" group:"agents" help:"Install your skills for Claude Code and Codex; list, add, remove."`
-	Agents agentsCmd `cmd:"" group:"agents" help:"Install the shared instructions, subagents and settings."`
+	Agents agentsCmd `cmd:"" group:"agents" help:"Install shared and personal agent instructions."`
 	Repo   repoCmd   `cmd:"" group:"agents" help:"Get a project ready for agents: its stack's skills, AGENTS.md, remote."`
 
 	Daemon daemonCmd `cmd:"" hidden:"" help:"Run the accounts service in the foreground (what the boot task runs)."`

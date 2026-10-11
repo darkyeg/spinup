@@ -1,27 +1,31 @@
 # Configure agents without mixing logins or settings
 
-Use one source for each kind of setting. `spinup agents` installs instructions for Claude Code and Codex, Claude subagents, and a small set of defaults in each agent's own settings file. It does not configure T3 Code provider instances or change agent authentication files.
+Use one source for each kind of setting. `spinup agents` combines shared instructions with your own for Claude Code and Codex. It leaves model choices, effort, limits and other settings unchanged by default, and bundles no subagents. It does not configure T3 Code provider instances or change agent authentication files. Forks can still supply shared settings and subagent definitions.
+
+## Add your own instructions
+
+Create `~/.spinup/AGENTS.md` with your preferences, then run `spinup agents`. On Windows, `~` means your user profile folder. The file is optional and user-written; spinup does not download someone else's personal policy. If you use `SPINUP_LIBRARY`, create it in that library instead.
+
+For example, the file can contain `Keep explanations concise and report the checks you ran.` Spinup appends it after its shared guidelines in both `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`. The library service also syncs it between your connected machines. A project's own `AGENTS.md` remains part of that repository and should contain project rules, not a contributor's subscription or model preferences.
 
 | Kind | Edit here | How it reaches other computers |
 |---|---|---|
 | Shared general instructions | spinup's `agents/AGENTS.md` | Use the same spinup defaults and run `spinup agents` |
 | Your own instructions and skills | `~/.spinup/AGENTS.md`, `skills.json`, `skills/` | The library service syncs them; run `spinup agents` after editing your instructions locally |
-| Shared Claude defaults | `agents/claude/settings.json` in your spinup checkout | Apply that checkout on each computer with `spinup agents` |
-| Shared Codex defaults | `agents/codex/config.toml` in your spinup checkout | Apply that checkout on each computer with `spinup agents` |
+| Personal models, effort and limits | Claude's `settings.json` and Codex's `config.toml` in their user homes | Configure locally; these settings are not library content |
+| Optional fork defaults | `agents/claude/settings.json`, `agents/codex/config.toml`, `agents/claude/agents/` | Apply that fork on each computer with `spinup agents` |
 | Project rules | The project's `AGENTS.md` and agent settings | Commit them in that project |
 | Provider endpoints, credentials and machine paths | Local agent config or that T3 Code provider instance | Configure them locally; keep secrets out of git and the library |
 
-The library shares instructions and skills, not the whole `~/.claude` or `~/.codex` folder and not the settings templates in `agents/`. Computers with different spinup versions or different checkouts can apply different defaults. Use the same version and source before expecting identical managed values.
+The library shares instructions and skills, not the whole `~/.claude` or `~/.codex` folder and not the settings templates in `agents/`. MCP server settings, device URLs and plugin installation state stay local; see the [sync boundary](LIBRARY.md#what-stays-on-each-machine). Computers with different spinup versions or different checkouts can apply different defaults. Use the same version and source before expecting identical managed values.
 
 ## What a merge changes
 
 Claude settings objects merge recursively. Keys in spinup's template replace matching values, and arrays replace matching arrays; keys absent from the template remain. Codex updates only the keys listed in its template, keeping other tables and unrelated comments. Each existing file gets a `.spinup-backup` once before spinup first changes it.
 
-The defaults set Claude effort, output style, prompt suggestions and its subagent model, and Codex effort, reasoning summary and its subagent defaults. They do not choose your main Codex model, provider or base URL. Your hooks, provider blocks and credentials are not part of the shared defaults.
+The bundled templates contain no setting overrides. Existing installations retain values and subagents installed by earlier releases; upgrading does not reset your settings or delete your files. Review unwanted old choices in your local settings and remove an old `~/.claude/agents/Explore.md` only if you no longer want that override. Keep any personal edits before removing it.
 
-Use Claude Code v2.1.237 or later for the built-in `Concise` style selected by the defaults. See [Claude output styles](https://code.claude.com/docs/en/output-styles).
-
-A direct edit to a managed key will be replaced on the next install, including an install triggered by an incoming library change. Change the template for a common default, or use an agent's project or session override for a different task. Installed instruction files and Claude subagents with names managed by spinup are replaced as whole files; put personal instructions in your library and give personal subagents distinct names.
+If a fork supplies settings, a direct edit to a key listed there will be replaced on the next install, including one triggered by an incoming library change. Installed instruction files and any fork-provided Claude subagents with matching names are replaced as whole files; put personal instructions in your library and avoid name collisions with a fork's subagents.
 
 Claude supports project settings in `.claude/settings.json` and personal project overrides in `.claude/settings.local.json`. Keep a manually created personal override out of git. See [Claude settings scopes](https://code.claude.com/docs/en/settings).
 

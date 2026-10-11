@@ -42,6 +42,47 @@ func TestAMissingLibraryIsEmpty(t *testing.T) {
 	}
 }
 
+func TestSyncPreservesDeviceConfiguration(t *testing.T) {
+	for _, path := range []string{
+		"mcp.json", "settings.json", "config.toml", "secrets.json",
+		"plugins/installed.json", "devices/local.json",
+		".claude/settings.json", ".codex/config.toml",
+	} {
+		t.Run(path, func(t *testing.T) {
+			lib := At(t.TempDir())
+			put(t, lib.Path(Instructions), "old instructions")
+			put(t, lib.Path(path), "local configuration")
+			files, err := lib.Snapshot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := paths(files); !reflect.DeepEqual(got, []string{Instructions}) {
+				t.Fatalf("outgoing paths = %v", got)
+			}
+			incoming := []File{{Path: Instructions, Data: []byte("new instructions")}}
+			invalid := append(incoming, File{Path: path, Data: []byte("remote configuration")})
+			if err := lib.Take(invalid, time.Now()); err == nil {
+				t.Fatal("accepted device configuration")
+			}
+			if got := read(t, lib.Path(Instructions)); got != "old instructions" {
+				t.Fatal("rejected update changed instructions")
+			}
+			if got := read(t, lib.Path(path)); got != "local configuration" {
+				t.Fatal("rejected update changed local configuration")
+			}
+			if err := lib.Take(incoming, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			if got := read(t, lib.Path(Instructions)); got != "new instructions" {
+				t.Fatal("valid update did not install instructions")
+			}
+			if got := read(t, lib.Path(path)); got != "local configuration" {
+				t.Fatal("valid update changed local configuration")
+			}
+		})
+	}
+}
+
 func TestFingerprintIgnoresFetchedCopies(t *testing.T) {
 	made := []File{{Path: SkillsList, Data: []byte("{}")}}
 	withCopy := append(made, File{Path: "fetched/x/SKILL.md", Data: []byte("x")})

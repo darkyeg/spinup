@@ -1,6 +1,6 @@
 # Working agreements (Claude Code + Codex)
 
-Installed by spinup (`agents/AGENTS.md`) to `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`. Edit it in the repo, not in place.
+Installed by spinup to `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`. Personal preferences belong in the library's `AGENTS.md` (`~/.spinup/AGENTS.md`), appended after these shared guidelines. Keep model, subscription and delegation choices out of project rules.
 
 ## Communication
 - Lead with the result: no preamble, narration, or closing recap.
@@ -23,7 +23,7 @@ Installed by spinup (`agents/AGENTS.md`) to `~/.claude/CLAUDE.md` and `~/.codex/
 - Claim success only after a check passed; if a check couldn't run, say so.
 
 ## Context hygiene
-- Delegate log, test and doc digging to a subagent that returns a summary.
+- Read scoped logs, tests and docs directly. Delegate only when isolation or independent review helps; give the task a clear scope and stopping point.
 - When compacting, keep: current goal, files touched, failing checks, decisions made.
 
 ## Windows shells (Codex)

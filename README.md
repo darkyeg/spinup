@@ -78,7 +78,7 @@ Run `ccp` instead of `claude` to use Claude Code with the shared accounts. Plain
 | `spinup handoff <machine>` | Move the accounts to another machine, safely |
 | `spinup machines` | Every device on your network and its address |
 | `spinup skills` | Your skills for Claude Code and Codex — see below |
-| `spinup agents` | Shared instructions, subagents and settings |
+| `spinup agents` | Shared and personal instructions; preserves your model choices and settings by default |
 | `spinup repo <path> [--apply]` | Get a project ready for agents: stack skills, AGENTS.md, git remote |
 | `spinup tools` | Install the dev tools a machine lacks |
 | `spinup keys` | The API key here; the dashboard password on a hub or standby |
@@ -118,7 +118,7 @@ spinup installs for the agents it finds on the machine; you don't list them. Mor
 
 ## Make it yours
 
-Your instructions go in `~/.spinup/AGENTS.md`, then run `spinup agents`. To change spinup's own defaults (stack rules, `agents/`, `tools.json`), fork the repo: spinup uses the checkout it runs in, or `SPINUP_REPO`.
+Create the optional `~/.spinup/AGENTS.md` yourself, then run `spinup agents`. Spinup appends your instructions to both Claude Code and Codex, and the library service syncs them between your machines. Models, effort and limits stay in your local agent settings; spinup does not choose them or bundle subagents. See [agent configuration](docs/AGENT-CONFIG.md). To change shared guidelines or supply your own defaults (stack rules, `agents/`, `tools.json`), fork the repo: spinup uses the checkout it runs in, or `SPINUP_REPO`.
 
 ## How it works
 
