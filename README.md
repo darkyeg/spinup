@@ -146,6 +146,7 @@ In plain words: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md). The safety design:
 - **A phone** without spinup points at an online hub or standby by name (`http://my-desktop:8317`) with the API key. If that machine goes offline, point it at another; spinup doesn't move one address between machines.
 - **Before trusting a new build** across machines, follow the [validation guide](docs/VALIDATION.md). A local health check doesn't exercise failover.
 - **Building from source?** `go install ./cmd/spinup` from a checkout. Unreleased changes don't arrive through `spinup update`.
+- **Trying a nightly?** Main builds publish GitHub prereleases with a `-nightly` suffix. Download the matching binary and verify it against that release's `checksums.txt`. Normal installers and `spinup update` use stable releases; they do not subscribe a machine to nightlies. A nightly can update to the same version's stable release once published.
 
 ## Security
 

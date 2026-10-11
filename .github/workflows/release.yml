@@ -1,7 +1,7 @@
 name: release
 
 # Push a tag like v0.2.0 to publish binaries for every platform, with checksums.txt.
-# The nightly workflow calls this one with the patch version it tagged.
+# The nightly workflow calls this one with a prerelease tag.
 on:
   push:
     tags: ["v*"]
@@ -42,4 +42,9 @@ jobs:
       - name: publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes
+        run: |
+          flags=()
+          if [[ "$TAG" == *-* ]]; then
+            flags+=(--prerelease --latest=false)
+          fi
+          gh release create "$TAG" dist/* --title "$TAG" --generate-notes --verify-tag "${flags[@]}"
