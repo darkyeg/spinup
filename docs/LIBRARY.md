@@ -1,6 +1,6 @@
 # Your library: `~/.spinup`
 
-What is yours (your skills list, your own skills, your instructions) lives in one folder on each machine, and spinup keeps that folder the same on all your machines. There is no repo to clone, no GitHub account, nothing to pull.
+Your skills list, skills and instructions live in one folder on each machine. Spinup syncs those parts of the folder between your machines. There is no repo to clone, no GitHub account, nothing to pull.
 
 ```
 ~/.spinup/
@@ -30,6 +30,16 @@ Change your library on any machine (a `spinup skills` command, or by hand) and w
 - **A new machine never overwrites yours.** A library you never changed loses to any library you did, so a new machine takes yours.
 - **Skills are fetched once.** The machine where you add a skill fetches it from GitHub (with Node.js) and keeps a copy in `fetched/`; the other machines install that copy, without Node.js or GitHub.
 - **Only your machines.** Libraries travel inside your tailnet, and only to and from machines that know your API key.
+
+## What stays on each machine
+
+The library sends only `AGENTS.md`, `skills.json`, `skills/` and `fetched/`. Other files are excluded from outgoing snapshots and rejected in incoming updates. Hidden files and symbolic links are not sent. An accepted update preserves files outside these shared paths.
+
+Keep MCP server settings, device URLs, executable paths, plugin installation state and credentials in their tool's local configuration. Spinup does not copy the Claude or Codex configuration folders through library sync. Account sharing is a separate service with its own [rules](SERVICE.md).
+
+Shared instructions and skill files are copied as content: spinup does not detect secrets or rewrite machine-specific values inside them. Keep these files portable and refer to local configuration instead of embedding device details.
+
+Future MCP or plugin sync needs an explicit portable format before extending this list: share the requested capability, resolve installation and connection details on each machine, and keep credentials local. Unknown configuration is not automatically portable. Library sync does not currently install or configure MCP servers or plugins.
 
 ## Coming from the private repo
 

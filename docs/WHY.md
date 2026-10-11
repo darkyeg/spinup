@@ -14,30 +14,15 @@ Short version: every token an agent reads costs money and attention. The default
 - `agents/AGENTS.md` is installed as `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`. It loads at the start of every session and in every subagent, so it stays under about 40 lines. Longer files cost more *and* are followed less well. ([Claude Code memory](https://code.claude.com/docs/en/memory))
 - Project rules belong in the project's own `AGENTS.md` (Claude Code reads it too). `spinup repo` warns when one is over 200 lines.
 
-## Claude Code settings (`agents/claude/settings.json`)
+## Models and delegation belong to the user
 
-| Setting | Why |
-|---|---|
-| Effort `medium` for Opus and Sonnet | Thinking tokens bill as output. Medium is the model default; raise it per task with `/effort`. |
-| `outputStyle: "Concise"` | Output tokens are the most expensive kind. Concise leads with the result and drops narration. |
-| `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` | Subagents otherwise inherit the session model (often Opus). |
-| `agents/claude/agents/Explore.md` on Haiku | The built-in Explore subagent runs on Opus on a subscription; searching doesn't need it. |
-| `promptSuggestionEnabled: false` | Skips a small extra request after each reply. |
+Model availability, subscription limits and task difficulty differ between users. The bundled settings templates therefore contain no overrides, and no Claude subagents are bundled. Installing shared instructions must not replace a user's model, effort, output style or concurrency choices.
 
-`spinup agents` merges these keys into your existing `settings.json`; everything else in it (hooks, status line) is kept.
-
-## Codex settings (`agents/codex/config.toml`)
-
-| Setting | Why |
-|---|---|
-| `model_reasoning_effort = "medium"` | Codex docs: start at the default effort, raise it per task. |
-| `plan_mode_reasoning_effort = "high"` | Spend reasoning on the plan, not on every edit. |
-| `model_reasoning_summary = "concise"` | Shorter reasoning summaries. |
-| Subagents on the small model, effort `low` | Focused, repeatable subtasks don't need the big model. |
+Keep personal workflow preferences in `~/.spinup/AGENTS.md`, and concrete settings in each tool's local config. The existing library sync shares the instructions; it does not copy provider credentials or entire settings files. Forks may still supply shared overrides through `agents/`. See [agent configuration](AGENT-CONFIG.md).
 
 ## Habits that save more than any setting
 
 - `/clear` between unrelated tasks; a long session resends its whole history on every message.
 - Name the files and functions in your request; vague requests make the agent scan the repo.
-- Send test and build runs to a subagent that reports only failures.
+- Filter test and build output locally; use a bounded subagent only when the task benefits from isolation or independent review.
 - Prefer CLIs (`gh`, `git`) over MCP servers when both work, and turn off MCP servers you don't use.

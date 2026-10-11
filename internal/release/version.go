@@ -5,8 +5,7 @@ import (
 	"strings"
 )
 
-// Newer reports whether version latest is later than current, comparing their numeric parts
-// (a leading v and any -prerelease or +build suffix are ignored); a release replaces a commit build.
+// Newer compares numeric versions; a stable release also replaces its prerelease or a commit build.
 func Newer(latest, current string) bool {
 	a, okA := numbers(latest)
 	if okA && commitBuild(current) {
@@ -24,7 +23,12 @@ func Newer(latest, current string) bool {
 			return false
 		}
 	}
-	return false
+	return !prerelease(latest) && prerelease(current)
+}
+
+func prerelease(version string) bool {
+	core, _, _ := strings.Cut(version, "+")
+	return strings.Contains(core, "-")
 }
 
 func commitBuild(version string) bool {

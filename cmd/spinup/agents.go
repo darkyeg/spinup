@@ -8,9 +8,9 @@ import (
 type agentsCmd struct{}
 
 func (agentsCmd) Help() string {
-	return `Installs spinup's agent config: one AGENTS.md for Claude Code and Codex (with your own
-instructions from AGENTS.md in your library, ~/.spinup, added at the end), the Claude subagents,
-and the settings, merged into yours.`
+	return `Installs shared instructions for Claude Code and Codex, followed by your own
+AGENTS.md from your library (~/.spinup). Your model choices and settings stay unchanged
+unless your spinup fork supplies overrides. No subagents are bundled by default.`
 }
 
 func (agentsCmd) Run() error { return installAgentConfig(repoData()) }

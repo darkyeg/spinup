@@ -78,7 +78,7 @@ Run `ccp` instead of `claude` to use Claude Code with the shared accounts. Plain
 | `spinup handoff <machine>` | Move the accounts to another machine, safely |
 | `spinup machines` | Every device on your network and its address |
 | `spinup skills` | Your skills for Claude Code and Codex — see below |
-| `spinup agents` | Shared instructions, subagents and settings |
+| `spinup agents` | Shared and personal instructions; preserves your model choices and settings by default |
 | `spinup repo <path> [--apply]` | Get a project ready for agents: stack skills, AGENTS.md, git remote |
 | `spinup tools` | Install the dev tools a machine lacks |
 | `spinup keys` | The API key here; the dashboard password on a hub or standby |
@@ -118,7 +118,7 @@ spinup installs for the agents it finds on the machine; you don't list them. Mor
 
 ## Make it yours
 
-Your instructions go in `~/.spinup/AGENTS.md`, then run `spinup agents`. To change spinup's own defaults (stack rules, `agents/`, `tools.json`), fork the repo: spinup uses the checkout it runs in, or `SPINUP_REPO`.
+Create the optional `~/.spinup/AGENTS.md` yourself, then run `spinup agents`. Spinup appends your instructions to both Claude Code and Codex, and the library service syncs them between your machines. Models, effort and limits stay in your local agent settings; spinup does not choose them or bundle subagents. See [agent configuration](docs/AGENT-CONFIG.md). To change shared guidelines or supply your own defaults (stack rules, `agents/`, `tools.json`), fork the repo: spinup uses the checkout it runs in, or `SPINUP_REPO`.
 
 ## How it works
 
@@ -146,6 +146,7 @@ In plain words: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md). The safety design:
 - **A phone** without spinup points at an online hub or standby by name (`http://my-desktop:8317`) with the API key. If that machine goes offline, point it at another; spinup doesn't move one address between machines.
 - **Before trusting a new build** across machines, follow the [validation guide](docs/VALIDATION.md). A local health check doesn't exercise failover.
 - **Building from source?** `go install ./cmd/spinup` from a checkout. Unreleased changes don't arrive through `spinup update`.
+- **Trying a nightly?** Main builds publish GitHub prereleases with a `-nightly` suffix. Download the matching binary and verify it against that release's `checksums.txt`. Normal installers and `spinup update` use stable releases; they do not subscribe a machine to nightlies. A nightly can update to the same version's stable release once published.
 
 ## Security
 
