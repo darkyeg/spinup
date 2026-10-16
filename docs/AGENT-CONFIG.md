@@ -19,6 +19,8 @@ For example, the file can contain `Keep explanations concise and report the chec
 
 The library shares instructions and skills, not the whole `~/.claude` or `~/.codex` folder and not the settings templates in `agents/`. MCP server settings, device URLs and plugin installation state stay local; see the [sync boundary](LIBRARY.md#what-stays-on-each-machine). Computers with different spinup versions or different checkouts can apply different defaults. Use the same version and source before expecting identical managed values.
 
+Complete plugins are managed separately with `spinup packages`. Portable package requests and locked content are shared, while each native manager maintains its own local registration. Package management preserves personal model settings and uses independent receipts for each resolved tool home. See [PACKAGES.md](PACKAGES.md).
+
 ## What a merge changes
 
 Claude settings objects merge recursively. Keys in spinup's template replace matching values, and arrays replace matching arrays; keys absent from the template remain. Codex updates only the keys listed in its template, keeping other tables and unrelated comments. Each existing file gets a `.spinup-backup` once before spinup first changes it.

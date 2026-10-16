@@ -14,6 +14,7 @@ import (
 	"github.com/darkyeg/spinup/internal/agentconfig"
 	"github.com/darkyeg/spinup/internal/config"
 	"github.com/darkyeg/spinup/internal/library"
+	"github.com/darkyeg/spinup/internal/packages"
 	"github.com/darkyeg/spinup/internal/proxy"
 	"github.com/darkyeg/spinup/internal/service"
 	"github.com/darkyeg/spinup/internal/skills"
@@ -71,7 +72,8 @@ func shareLibrary(o *service.Options, cfg config.Config, logger *log.Logger) {
 	o.ApplyLibrary = func(ctx context.Context) error {
 		_, skillsErr := skills.New(repo, lib, logger.Printf).Offline().Sync(ctx)
 		_, agentsErr := agentconfig.Install(agentconfig.Sources{Spinup: repo, Yours: lib}, agentconfig.HostHomes())
-		return errors.Join(skillsErr, agentsErr)
+		_, packagesErr := packages.New(lib, packages.HostTargets()).Sync(ctx)
+		return errors.Join(skillsErr, agentsErr, packagesErr)
 	}
 }
 

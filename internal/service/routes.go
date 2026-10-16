@@ -40,6 +40,8 @@ func (m *Machine) routes(a audience) http.Handler {
 		mux.HandleFunc("GET "+api.PathLibraryState, m.withAPIKey(m.serveLibraryState))
 		mux.HandleFunc("GET "+api.PathLibrary, m.withAPIKey(m.serveLibrary))
 		mux.HandleFunc("POST "+api.PathLibrary, m.withAPIKey(m.acceptLibrary))
+		mux.HandleFunc("GET "+api.PathLibraryArtifact, m.withAPIKey(m.serveArtifact))
+		mux.HandleFunc("POST "+api.PathLibraryArtifact, m.withAPIKey(m.acceptArtifact))
 		if a == onLocalhost {
 			mux.HandleFunc("POST "+api.PathLibrarySync, m.withAPIKey(m.serveLibrarySync))
 		}

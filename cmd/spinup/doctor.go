@@ -34,6 +34,7 @@ func (doctorCmd) Run() error {
 		networkSection(ctx),
 		accountsSection(ctx),
 		agentsSection(repo),
+		packagesSection(ctx),
 		doctor.Update(version, latestVersion(ctx, releases)),
 	}
 	printSections(sections)

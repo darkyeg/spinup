@@ -1,5 +1,7 @@
 # Skills
 
+For a complete plugin with related skills, hooks and scripts, use [spinup packages](../docs/PACKAGES.md). This page describes standalone skills; their existing commands and library format remain supported.
+
 Every installed skill's description sits in the agent's context in **every** session, so spinup keeps the global set small and installs stack-specific skills only in the projects that use them. Background: [docs/WHY.md](../docs/WHY.md).
 
 ## Commands

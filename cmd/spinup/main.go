@@ -29,9 +29,10 @@ type cli struct {
 	Takeover takeoverCmd `cmd:"" group:"accounts" help:"Hold the accounts here because their holder is lost for good."`
 	Keys     keysCmd     `cmd:"" group:"accounts" help:"Print this machine's API key; holders also print the dashboard password."`
 
-	Skills skillsCmd `cmd:"" group:"agents" help:"Install your skills for Claude Code and Codex; list, add, remove."`
-	Agents agentsCmd `cmd:"" group:"agents" help:"Install shared and personal agent instructions."`
-	Repo   repoCmd   `cmd:"" group:"agents" help:"Get a project ready for agents: its stack's skills, AGENTS.md, remote."`
+	Skills   skillsCmd   `cmd:"" group:"agents" help:"Install your skills for Claude Code and Codex; list, add, remove."`
+	Packages packagesCmd `cmd:"" group:"agents" help:"Manage complete plugin packages, pinned versions and rollback."`
+	Agents   agentsCmd   `cmd:"" group:"agents" help:"Install shared and personal agent instructions."`
+	Repo     repoCmd     `cmd:"" group:"agents" help:"Get a project ready for agents: its stack's skills, AGENTS.md, remote."`
 
 	Daemon daemonCmd `cmd:"" hidden:"" help:"Run the accounts service in the foreground (what the boot task runs)."`
 

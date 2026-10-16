@@ -1,6 +1,7 @@
 package library
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/darkyeg/spinup/internal/atomicfile"
+	"github.com/darkyeg/spinup/internal/filelock"
 )
 
 // SizeLimit bounds a library sent between machines.
@@ -143,6 +145,17 @@ func (l Library) AddFetched(files []File) (added []string, err error) {
 // fetched skill that came along replaces this machine's copy of it. File times keep the source date
 // so losing the tracker cannot make a received copy look like a new local edit.
 func (l Library) Take(files []File, changedAt time.Time) error {
+	return l.TakeIf(files, changedAt, nil)
+}
+
+// TakeIf validates a replacement, then checks it against the current files while
+// holding the same lock as package edits. A rejected check makes no changes.
+func (l Library) TakeIf(files []File, changedAt time.Time, accept func([]File) error) error {
+	lock, err := filelock.Acquire(context.Background(), l.Path(".packages.lock"))
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	incoming := map[string]bool{}
 	fetchedSkills := map[string]bool{}
 	for _, f := range files {
@@ -157,6 +170,18 @@ func (l Library) Take(files []File, changedAt time.Time) error {
 	current, err := l.Snapshot()
 	if err != nil {
 		return err
+	}
+	if !incoming[Packages] {
+		for _, f := range current {
+			if f.Path == Packages {
+				return errors.New("incoming library omits packages.json; update the sending machine and retain an empty package list when removing all packages")
+			}
+		}
+	}
+	if accept != nil {
+		if err := accept(current); err != nil {
+			return err
+		}
 	}
 	for _, f := range current {
 		_, skill := split(f.Path)
