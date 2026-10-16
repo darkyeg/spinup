@@ -44,6 +44,7 @@ func (updateCmd) Run() error {
 		{"accounts service", refreshService},
 		{"CLIProxyAPI", updateProxy},
 		{"skills", func(ctx context.Context) error { return syncSkills(ctx, repoData()) }},
+		{"packages", syncPackages},
 		{"Tailscale", tailnet.Update},
 	} {
 		if err := part.run(ctx); err != nil {

@@ -30,6 +30,9 @@ The words spinup uses, in the code, the commands and the docs. Use these and not
 ## Agents
 
 - **Skill**: a folder with a `SKILL.md` that Claude Code and Codex load.
+- **Package**: a complete agent plugin whose related skills and supporting resources are installed together.
+- **Package revision**: a specific, retained edition of a package, shared across the machines that request it.
+- **Installation target**: one installation of an agent tool on a machine; separate tool homes are separate targets.
 - **Auto / manual**: an auto skill runs when the agent decides; a manual one only when you call it (`/name`, `$name`).
 - **Own skill**: a skill you keep as a folder in your library (`~/.spinup/skills/`).
 - **Parked skill**: an installed skill not on the list, moved aside so no agent loads it.

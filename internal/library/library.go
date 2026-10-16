@@ -19,11 +19,12 @@ const (
 	// Instructions is added after spinup's instructions for Claude Code and Codex.
 	Instructions = "AGENTS.md"
 	// Fetched keeps a copy of each skill on your list that came from GitHub, so no machine fetches it again.
-	Fetched = "fetched"
+	Fetched  = "fetched"
+	Packages = "packages.json"
 )
 
 // yourParts are what you make in a library; they date it.
-var yourParts = []string{SkillsList, SkillsDir, Instructions}
+var yourParts = []string{SkillsList, SkillsDir, Instructions, Packages}
 
 type Library struct{ dir string }
 

@@ -46,6 +46,7 @@ func (c setupCmd) Run() error {
 		}},
 		{"Dev tools", false, func(ctx context.Context) error { return installTools(ctx, repo) }},
 		{"Skills", false, func(ctx context.Context) error { return syncSkills(ctx, repo) }},
+		{"Packages", false, syncPackages},
 		{"Agent config", false, func(context.Context) error { return installAgentConfig(repo) }},
 	}
 	var failed []string

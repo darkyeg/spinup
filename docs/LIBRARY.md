@@ -8,6 +8,9 @@ Your skills list, skills and instructions live in one folder on each machine. Sp
   skills/<name>/    your own skills: a folder with a SKILL.md each
   AGENTS.md         your instructions, added after spinup's
   fetched/<name>/   a copy of each skill on your list, fetched from GitHub once
+  packages.json     requested plugin packages and their locked revisions
+  artifacts/        verified package archives, transferred separately by digest
+  local/            this machine's package catalogs, content and installation receipts
 ```
 
 Everything is optional. Without a library, spinup uses its suggested skills and instructions.
@@ -17,6 +20,7 @@ Everything is optional. Without a library, spinup uses its suggested skills and 
 - **Skills list:** it starts as spinup's suggested list. Your first `spinup skills add`, `remove`, `manual` or `auto` copies that list into `skills.json` and changes the copy; from then on your list is the one used.
 - **Own skills:** `spinup skills new <name>` starts one, `spinup skills import <path|zip>` takes one someone sent you. Both write a folder with a `SKILL.md` into `skills/` and install it for Claude Code and Codex. Dropping a folder in by hand and running `spinup skills sync` does the same.
 - **Instructions:** write `AGENTS.md`, then run `spinup agents`. It is added after spinup's instructions in `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`.
+- **Packages:** `spinup packages add owner/repo` resolves and installs a complete plugin. Its locked revision and requested tools are shared; native installation state stays local. See [PACKAGES.md](PACKAGES.md).
 
 `SPINUP_LIBRARY` moves the library to another folder.
 
@@ -33,13 +37,13 @@ Change your library on any machine (a `spinup skills` command, or by hand) and w
 
 ## What stays on each machine
 
-The library sends only `AGENTS.md`, `skills.json`, `skills/` and `fetched/`. Other files are excluded from outgoing snapshots and rejected in incoming updates. Hidden files and symbolic links are not sent. An accepted update preserves files outside these shared paths.
+Library snapshots send only `AGENTS.md`, `skills.json`, `skills/`, `fetched/` and `packages.json`. Hidden files and symbolic links remain excluded from these snapshots. Verified package archives are transferred separately by digest and preserve hidden plugin manifests inside the archive. An accepted update preserves files outside the shared paths, including local package installation receipts and catalogs.
 
 Keep MCP server settings, device URLs, executable paths, plugin installation state and credentials in their tool's local configuration. Spinup does not copy the Claude or Codex configuration folders through library sync. Account sharing is a separate service with its own [rules](SERVICE.md).
 
 Shared instructions and skill files are copied as content: spinup does not detect secrets or rewrite machine-specific values inside them. Keep these files portable and refer to local configuration instead of embedding device details.
 
-Future MCP or plugin sync needs an explicit portable format before extending this list: share the requested capability, resolve installation and connection details on each machine, and keep credentials local. Unknown configuration is not automatically portable. Library sync does not currently install or configure MCP servers or plugins.
+Package sync uses an explicit portable declaration and locked artifact, then reconciles native installation on each machine. It does not copy tool configuration, credentials or MCP connection state. Unknown configuration is not automatically portable. All participating machines need package-aware Spinup before adding packages; legacy whole-library replacements are refused once `packages.json` exists.
 
 ## Coming from the private repo
 

@@ -101,10 +101,29 @@ func (m *Machine) compareLibrary(ctx context.Context, base string) {
 		return
 	}
 	seen := situation(here, there)
-	if m.library.exchanges.repeats(base, seen) {
+	if here.HasPackages && there.Protocol < 2 {
+		if !m.library.exchanges.repeats(base, seen) {
+			m.log.Printf("library: update spinup on %s to share packages", base)
+			m.library.exchanges.record(base, seen, true)
+		}
 		return
 	}
-	m.library.exchanges.record(base, seen, m.exchangeLibrary(ctx, base, here, there))
+	if m.library.exchanges.repeats(base, seen) {
+		m.exchangeArtifacts(ctx, base, here, there)
+		return
+	}
+	sent := m.exchangeLibrary(ctx, base, here, there)
+	m.library.exchanges.record(base, seen, sent)
+	if sent {
+		if fresh, err := m.library.state(time.Now()); err == nil {
+			here = fresh
+		}
+		var fresh api.LibraryState
+		if err := m.libraryClient().Get(ctx, base+api.PathLibraryState, &fresh); err == nil {
+			there = fresh
+		}
+	}
+	m.exchangeArtifacts(ctx, base, here, there)
 }
 
 // exchangeLibrary does what compareLibrary decided and reports whether a library went either way.
@@ -133,7 +152,7 @@ func (m *Machine) exchangeLibrary(ctx context.Context, base string, here, there 
 
 // situation is what a comparison saw; meeting the same one right after a transfer means the transfer changed nothing.
 func situation(here, there api.LibraryState) string {
-	return fmt.Sprint(here.Stamp, there.Stamp, slices.Sorted(slices.Values(here.Fetched)), slices.Sorted(slices.Values(there.Fetched)))
+	return fmt.Sprint(here.Stamp, there.Stamp, here.Protocol, there.Protocol, slices.Sorted(slices.Values(here.Fetched)), slices.Sorted(slices.Values(there.Fetched)))
 }
 
 // lacking reports whether have misses any of offered.
