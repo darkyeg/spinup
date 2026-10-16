@@ -27,6 +27,8 @@ Spinup recognizes `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, and
 
 Claude Code and Codex must support native plugin CLI operations. The implementation was verified with Claude Code 2.1.296 and Codex CLI 0.162.1 on Windows. Unsupported or missing tools are reported without substituting plain skill copies. An add saves the requested package even if one tool cannot install it yet; correct that tool and run `spinup packages sync`.
 
+On Windows, if a native command is not found, Spinup refreshes its process PATH from the registered machine and user paths and retries discovery. It repairs an unmatched quote in that process PATH and avoids duplicate entries; it does not edit the Windows environment registry. After correcting a missing-tool error, use `packages sync` to finish the saved installation without adding or downloading the package again.
+
 Packages can have their own runtime requirements. Superpowers uses Git and Bash (Git for Windows supplies Bash); its optional visual companion needs Node and a browser. Spinup does not install arbitrary dependencies, launch plugin helpers or configure credentials. Native plugin content can include hooks and MCP declarations; the target tool controls their execution and connections.
 
 ## Existing skills and plugins

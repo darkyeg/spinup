@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/darkyeg/spinup/internal/host"
+	"github.com/darkyeg/spinup/internal/shell"
 	"github.com/darkyeg/spinup/internal/sysproc"
 )
 
@@ -49,7 +49,7 @@ func (native) run(ctx context.Context, t Target, args ...string) ([]byte, error)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd := shell.CommandContext(ctx, bin, args...)
 	sysproc.Hide(cmd)
 	cmd.Dir = filepath.Dir(t.Home)
 	cmd.Env = append(os.Environ(), env+"="+t.Home)
